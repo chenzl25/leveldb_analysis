@@ -31,6 +31,16 @@ enum CompressionType {
   kSnappyCompression = 0x1
 };
 
+/*=============================================
+=            Options                          =
+=============================================*/
+// open时候的Options
+// read时候的ReadOptions
+// write时候的WriteOPtions
+
+/*=====  End of Options                ======*/
+
+
 // Options to control the behavior of a database (passed to DB::Open)
 // 在打开数据库的时候传进去的Options.配置
 struct Options {
@@ -262,3 +272,4 @@ struct WriteOptions {
 }  // namespace leveldb
 
 #endif  // STORAGE_LEVELDB_INCLUDE_OPTIONS_H_
+
