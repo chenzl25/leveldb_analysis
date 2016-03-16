@@ -15,6 +15,19 @@
 // they want something more sophisticated (like scan-resistance, a
 // custom eviction policy, variable cache sizing, etc.)
 
+/*=============================
+=            Cache            =
+=============================*/
+
+// 这里是Cache的interface
+// leveldb中有好几个Cache，如sstable的索引cache，block的cache
+// 内部默认的cache策略是LRU策略
+// 我们也可以自己实现相关的策略来防止cache miss过多
+// 貌似还可以自己实现cache变长策略
+
+/*=====  End of Cache  ======*/
+
+
 #ifndef STORAGE_LEVELDB_INCLUDE_CACHE_H_
 #define STORAGE_LEVELDB_INCLUDE_CACHE_H_
 
@@ -27,17 +40,21 @@ class Cache;
 
 // Create a new cache with a fixed size capacity.  This implementation
 // of Cache uses a least-recently-used eviction policy.
+// 默认的定长LRU策略cache
 extern Cache* NewLRUCache(size_t capacity);
 
 class Cache {
  public:
+  // 构造函数
   Cache() { }
 
   // Destroys all existing entries by calling the "deleter"
   // function that was passed to the constructor.
+  // 析构函数，会调用里面元素的deleter
   virtual ~Cache();
 
   // Opaque handle to an entry stored in the cache.
+  // 不透明的Handle（句柄）用于访问cache的元素
   struct Handle { };
 
   // Insert a mapping from key->value into the cache and assign it
@@ -49,6 +66,10 @@ class Cache {
   //
   // When the inserted entry is no longer needed, the key and
   // value will be passed to "deleter".
+  // 插入到Cache中的函数
+  // 包括键key，值value，（估计的大小charge，可能用于估算在cache中占的位置是多少）
+  // charge可以取变长string的长度来估算
+  // deleter用于当键值不用的时候的处理
   virtual Handle* Insert(const Slice& key, void* value, size_t charge,
                          void (*deleter)(const Slice& key, void* value)) = 0;
 
@@ -57,28 +78,36 @@ class Cache {
   // Else return a handle that corresponds to the mapping.  The caller
   // must call this->Release(handle) when the returned mapping is no
   // longer needed.
+  // 对于查询的key返回对应的handle
+  // 当handle不用时要记得release掉
+  // 因为在用的handle是不会被LRUcacahe替换的
   virtual Handle* Lookup(const Slice& key) = 0;
 
   // Release a mapping returned by a previous Lookup().
   // REQUIRES: handle must not have been released yet.
   // REQUIRES: handle must have been returned by a method on *this.
+  // release掉handle
   virtual void Release(Handle* handle) = 0;
 
   // Return the value encapsulated in a handle returned by a
   // successful Lookup().
   // REQUIRES: handle must not have been released yet.
   // REQUIRES: handle must have been returned by a method on *this.
+  // 根据handle返回value
   virtual void* Value(Handle* handle) = 0;
 
   // If the cache contains entry for key, erase it.  Note that the
   // underlying entry will be kept around until all existing handles
   // to it have been released.
+  // 删除一个key／value，当所有的handle都release了的时候才能调用
   virtual void Erase(const Slice& key) = 0;
 
   // Return a new numeric id.  May be used by multiple clients who are
   // sharing the same cache to partition the key space.  Typically the
   // client will allocate a new id at startup and prepend the id to
   // its cache keys.
+  // 返回一个新的ID。
+  // 不太理解上面英文的意思。以后理解了补充
   virtual uint64_t NewId() = 0;
 
   // Remove all cache entries that are not actively in use.  Memory-constrained
@@ -86,17 +115,21 @@ class Cache {
   // Default implementation of Prune() does nothing.  Subclasses are strongly
   // encouraged to override the default implementation.  A future release of
   // leveldb may change Prune() to a pure abstract method.
+  // 用于删减所有不再活跃的cache
+  // 默认实现是没，强烈建议override，特别是内存紧缺的应用
   virtual void Prune() {}
 
   // Return an estimate of the combined charges of all elements stored in the
   // cache.
+  // 返回所有entry的charge总和，也就是我们插入时传进去的值
   virtual size_t TotalCharge() const = 0;
 
  private:
+  // 私有的LRu策略的remove删除，append添加，unref去引用
   void LRU_Remove(Handle* e);
   void LRU_Append(Handle* e);
   void Unref(Handle* e);
-
+  // 没发现在那里，迟点再补
   struct Rep;
   Rep* rep_;
 

@@ -21,6 +21,17 @@ class TableCache;
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
 // multiple threads without external synchronization.
+/*=============================
+=            Table            =
+=============================*/
+
+// Talbe是一个有序的map<string,  string>
+// 同时是不可修改的
+// 多线程访问是安全的，如果在没有external synchronization的时候是
+
+/*=====  End of Table  ======*/
+
+
 class Table {
  public:
   // Attempt to open the table that is stored in bytes [0..file_size)
@@ -35,6 +46,10 @@ class Table {
   // for the duration of the returned table's lifetime.
   //
   // *file must remain live while this Table is in use.
+  // table的持续存储室在硬盘中的
+  // 这个方法可以打开存储在file中的table
+  // 如果成功打开返回success的status，同时会把*table置为新开的table
+  // 否则status为error，同时指针table为NULL
   static Status Open(const Options& options,
                      RandomAccessFile* file,
                      uint64_t file_size,
@@ -45,6 +60,9 @@ class Table {
   // Returns a new iterator over the table contents.
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).
+  // 返回一个在table上的迭代的Iterator
+  // 注意：刚返回时iterator是invalid的
+  // 须要使用seek相关的函数使其有效，例如：SeekToFirst
   Iterator* NewIterator(const ReadOptions&) const;
 
   // Given a key, return an approximate byte offset in the file where
@@ -53,26 +71,33 @@ class Table {
   // bytes, and so includes effects like compression of the underlying data.
   // E.g., the approximate offset of the last key in the table will
   // be close to the file length.
+  // 给定一个key返回这个ley大概在table的offset， //为什么是大概了，现在不大了解，以后补充
+  // 例如： 如果给了最后一个key，那么结果就很接近file的size
   uint64_t ApproximateOffsetOf(const Slice& key) const;
 
  private:
   struct Rep;
   Rep* rep_;
-
+  // 注意table的构造函数是私有的，table只能通过静态方法打开
   explicit Table(Rep* rep) { rep_ = rep; }
+  // BlockReader在相关文件再介绍
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
 
   // Calls (*handle_result)(arg, ...) with the entry found after a call
   // to Seek(key).  May not make such a call if filter policy says
   // that key is not present.
+  // TableCache是友元
   friend class TableCache;
+  // 现在不大了解，以后补充
+  // handle_result函数在entry找到后调用，但是filter 说不在的时候就不会调用
   Status InternalGet(
       const ReadOptions&, const Slice& key,
       void* arg,
       void (*handle_result)(void* arg, const Slice& k, const Slice& v));
 
-
+  // 读footer，footer是table中最后的一部分 //现在也不大确定是meta还是footer，以后补充
   void ReadMeta(const Footer& footer);
+  // 读filter，table后面貌似在filterCreate那里会append进来 
   void ReadFilter(const Slice& filter_handle_value);
 
   // No copying allowed

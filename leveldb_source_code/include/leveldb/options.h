@@ -259,7 +259,9 @@ struct WriteOptions {
   // Default: false
   // 是否马上同步
   // 考虑速度与重要性
-  // 如果 sync ＝ false 一般的进程crash是不会造成数据丢失的。但是宕机了就会
+  // 如果 sync ＝ false 一般的进程crash是不会造成数据丢失的，
+  // ＊＊因为会有log文件纪录
+  // 但是宕机了就会
   // 类比 系统调用的 write() fsyn()
   // 默认：false
   bool sync;
