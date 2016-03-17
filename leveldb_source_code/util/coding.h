@@ -7,6 +7,16 @@
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
+/*===============================
+=            codeing.h            =
+===============================*/
+
+// 这里是固定长度的、变长的int的编码和译码
+// little－endian规则
+
+/*=====  End of codeing.h  ======*/
+
+
 #ifndef STORAGE_LEVELDB_UTIL_CODING_H_
 #define STORAGE_LEVELDB_UTIL_CODING_H_
 
@@ -19,6 +29,7 @@
 namespace leveldb {
 
 // Standard Put... routines append to a string
+// append模式encode value追加到string中
 extern void PutFixed32(std::string* dst, uint32_t value);
 extern void PutFixed64(std::string* dst, uint64_t value);
 extern void PutVarint32(std::string* dst, uint32_t value);
@@ -27,6 +38,7 @@ extern void PutLengthPrefixedSlice(std::string* dst, const Slice& value);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
+// 获取相应的变长到value中顺便input移相应的步数
 extern bool GetVarint32(Slice* input, uint32_t* value);
 extern bool GetVarint64(Slice* input, uint64_t* value);
 extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
@@ -35,26 +47,31 @@ extern bool GetLengthPrefixedSlice(Slice* input, Slice* result);
 // in *v and return a pointer just past the parsed value, or return
 // NULL on error.  These routines only look at bytes in the range
 // [p..limit-1]
+// 获取变长的值，带limit限制[p, limit)
 extern const char* GetVarint32Ptr(const char* p,const char* limit, uint32_t* v);
 extern const char* GetVarint64Ptr(const char* p,const char* limit, uint64_t* v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
+// 返回变长int的length的长度
 extern int VarintLength(uint64_t v);
 
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
+// 编码定长int
 extern void EncodeFixed32(char* dst, uint32_t value);
 extern void EncodeFixed64(char* dst, uint64_t value);
 
 // Lower-level versions of Put... that write directly into a character buffer
 // and return a pointer just past the last byte written.
 // REQUIRES: dst has enough space for the value being written
+// 编码变长到dst中
 extern char* EncodeVarint32(char* dst, uint32_t value);
 extern char* EncodeVarint64(char* dst, uint64_t value);
 
 // Lower-level versions of Get... that read directly from a character buffer
 // without any bounds checking.
-
+// 将ptr中的值译码出来，如果port是little－edndian则直接memcpy
+// 否则，手动将little－endian译码
 inline uint32_t DecodeFixed32(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
@@ -68,7 +85,7 @@ inline uint32_t DecodeFixed32(const char* ptr) {
         | (static_cast<uint32_t>(static_cast<unsigned char>(ptr[3])) << 24));
   }
 }
-
+// 复用定长32 来 译码定长64
 inline uint64_t DecodeFixed64(const char* ptr) {
   if (port::kLittleEndian) {
     // Load the raw bytes
@@ -83,9 +100,12 @@ inline uint64_t DecodeFixed64(const char* ptr) {
 }
 
 // Internal routine for use by fallback path of GetVarint32Ptr
+// 见下面
 extern const char* GetVarint32PtrFallback(const char* p,
                                           const char* limit,
                                           uint32_t* value);
+// 将传进来的p，在[p,limit）中获得变长32的值放到value中，同时将p移位到最后一位的下一位
+// 如果长度大于1byte，则用 GetVarint32PtrFallback
 inline const char* GetVarint32Ptr(const char* p,
                                   const char* limit,
                                   uint32_t* value) {
