@@ -27,7 +27,7 @@ Logger::~Logger() {
 
 FileLock::~FileLock() {
 }
-
+// 转而将变长参数换成Logger的Logv调用
 void Log(Logger* info_log, const char* format, ...) {
   if (info_log != NULL) {
     va_list ap;
@@ -36,7 +36,7 @@ void Log(Logger* info_log, const char* format, ...) {
     va_end(ap);
   }
 }
-
+// 该函数用于下面
 static Status DoWriteStringToFile(Env* env, const Slice& data,
                                   const std::string& fname,
                                   bool should_sync) {
@@ -58,17 +58,17 @@ static Status DoWriteStringToFile(Env* env, const Slice& data,
   }
   return s;
 }
-
+// 非sync写入文件，DoWriteStringToFile在上面
 Status WriteStringToFile(Env* env, const Slice& data,
                          const std::string& fname) {
   return DoWriteStringToFile(env, data, fname, false);
 }
-
+// Sync写入文件，DoWriteStringToFile在上面
 Status WriteStringToFileSync(Env* env, const Slice& data,
                              const std::string& fname) {
   return DoWriteStringToFile(env, data, fname, true);
 }
-
+// 用顺序读的方法读文件到string
 Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
   data->clear();
   SequentialFile* file;

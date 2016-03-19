@@ -7,16 +7,23 @@
 #include "leveldb/status.h"
 
 namespace leveldb {
-
+//  state_[0..3] == 消息长度
+//  state_[4]    == 消息对应枚举类型的值
+//  state_[5..]  == 消息本身
+// 拷贝state
 const char* Status::CopyState(const char* state) {
+  // 现将消息长度读取出来，必须的一步
   uint32_t size;
   memcpy(&size, state, sizeof(size));
+  // 再创建对应result的大小
   char* result = new char[size + 5];
+  // copy返回
   memcpy(result, state, size + 5);
   return result;
 }
 
 Status::Status(Code code, const Slice& msg, const Slice& msg2) {
+  // 基本格式 length + type + msg + “： ” + msg2
   assert(code != kOk);
   const uint32_t len1 = msg.size();
   const uint32_t len2 = msg2.size();
@@ -32,7 +39,8 @@ Status::Status(Code code, const Slice& msg, const Slice& msg2) {
   }
   state_ = result;
 }
-
+// 返回打印友好的String
+// 只要对state结构熟悉很好懂
 std::string Status::ToString() const {
   if (state_ == NULL) {
     return "OK";

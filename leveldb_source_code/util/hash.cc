@@ -9,12 +9,16 @@
 // The FALLTHROUGH_INTENDED macro can be used to annotate implicit fall-through
 // between switch labels. The real definition should be provided externally.
 // This one is a fallback version for unsupported compilers.
+// 这段宏现在看不懂，以后补充
 #ifndef FALLTHROUGH_INTENDED
 #define FALLTHROUGH_INTENDED do { } while (0)
 #endif
 
 namespace leveldb {
-
+// google下murmur 哈希
+// 没啥好讲的
+// 像murmur hash一样4个byte为一组弄下
+// 剩下的分情况弄下
 uint32_t Hash(const char* data, size_t n, uint32_t seed) {
   // Similar to murmur hash
   const uint32_t m = 0xc6a4a793;

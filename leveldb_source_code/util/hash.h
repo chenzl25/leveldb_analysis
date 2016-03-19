@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 namespace leveldb {
-
+// 一个简单的内部用的hash函数，根据传入的长度为n的data，加上种子seed返回一个32int值
 extern uint32_t Hash(const char* data, size_t n, uint32_t seed);
 
 }

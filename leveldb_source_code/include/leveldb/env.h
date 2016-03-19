@@ -168,7 +168,7 @@ class Env {
   // added to the same Env may run concurrently in different threads.
   // I.e., the caller may not assume that background work items are
   // serialized.
-  // 安排一个函数在另外的线程中运行，如果有多个函数，则并行，不保证运行顺序
+  // 安排一个函数在后台线程中运行，如果有多个函数，则“可能”并行，不保证运行顺序
   virtual void Schedule(
       void (*function)(void* arg),
       void* arg) = 0;

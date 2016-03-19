@@ -15,21 +15,27 @@
 #include "leveldb/env.h"
 
 namespace leveldb {
-
+// Logger的interface在"leveldb/env.h"中
 class PosixLogger : public Logger {
  private:
+  // 见构造函数
   FILE* file_;
   uint64_t (*gettid_)();  // Return the thread id for the current thread
  public:
+  // 构造函数：接受FILE指针，和一个可以返回当前线程id的函数指针，存在上面
   PosixLogger(FILE* f, uint64_t (*gettid)()) : file_(f), gettid_(gettid) { }
+  // 析构函数
   virtual ~PosixLogger() {
     fclose(file_);
   }
+  // va_list ap来自env.cc的文件的Log中
+  // 写日志
   virtual void Logv(const char* format, va_list ap) {
     const uint64_t thread_id = (*gettid_)();
 
     // We try twice: the first time with a fixed-size stack allocated buffer,
     // and the second time with a much larger dynamically allocated buffer.
+    // 这里用了两次的for循环，一次定长尝试，若不成功用new
     char buffer[500];
     for (int iter = 0; iter < 2; iter++) {
       char* base;

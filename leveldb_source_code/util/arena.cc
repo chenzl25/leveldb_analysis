@@ -13,13 +13,14 @@ Arena::Arena() : memory_usage_(0) {
   alloc_ptr_ = NULL;  // First allocation will allocate a block
   alloc_bytes_remaining_ = 0;
 }
-
+// 析构函数，对每个block进行delete
 Arena::~Arena() {
   for (size_t i = 0; i < blocks_.size(); i++) {
     delete[] blocks_[i];
   }
 }
-
+// 如果申请的bytes > 预定的blockSize的1/4申请一个单独的block返回，防止浪费太多block的内存
+// 否则，浪费现在block的内存，返回一个新的block，并给出bytes大小的内存
 char* Arena::AllocateFallback(size_t bytes) {
   if (bytes > kBlockSize / 4) {
     // Object is more than a quarter of our block size.  Allocate it separately
@@ -37,7 +38,9 @@ char* Arena::AllocateFallback(size_t bytes) {
   alloc_bytes_remaining_ -= bytes;
   return result;
 }
-
+// 计算出可以对齐的slop是多少，然后再申请的bytes加上，使其对齐
+// 再返回（这是剩余内存够得情况）
+// 否则申请一个新的block来处理，这样的话就肯定会是对齐的了
 char* Arena::AllocateAligned(size_t bytes) {
   const int align = (sizeof(void*) > 8) ? sizeof(void*) : 8;
   assert((align & (align-1)) == 0);   // Pointer size should be a power of 2

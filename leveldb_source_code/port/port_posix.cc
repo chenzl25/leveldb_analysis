@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <string.h>
 
+// 使用posix的pthread库来实现
+
 namespace leveldb {
 namespace port {
 

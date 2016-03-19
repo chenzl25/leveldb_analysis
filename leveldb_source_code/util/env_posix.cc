@@ -24,6 +24,15 @@
 #include "util/mutexlock.h"
 #include "util/posix_logger.h"
 
+/*=============================================
+=            默认的env实现            =
+=============================================*/
+
+// 用posix
+
+/*=====  End of 默认的env实现  ======*/
+
+
 namespace leveldb {
 
 namespace {
@@ -31,7 +40,7 @@ namespace {
 static Status IOError(const std::string& context, int err_number) {
   return Status::IOError(context, strerror(err_number));
 }
-
+// Posix的顺序读取文件，其中实现用了熟悉的c文件操作
 class PosixSequentialFile: public SequentialFile {
  private:
   std::string filename_;
@@ -44,6 +53,7 @@ class PosixSequentialFile: public SequentialFile {
 
   virtual Status Read(size_t n, Slice* result, char* scratch) {
     Status s;
+    // posix的fread方法 fread_unclocked，不需要thread-safe
     size_t r = fread_unlocked(scratch, 1, n, file_);
     *result = Slice(scratch, r);
     if (r < n) {
@@ -66,6 +76,10 @@ class PosixSequentialFile: public SequentialFile {
 };
 
 // pread() based random-access
+// 在#include <unistd.h>中
+// pread() reads up to count bytes from file descriptor fd at offset offset 
+// (from the start of the file) into the buffer starting at buf.
+ // The file offset is not changed.
 class PosixRandomAccessFile: public RandomAccessFile {
  private:
   std::string filename_;
@@ -211,7 +225,7 @@ class PosixWritableFile : public WritableFile {
     }
     return Status::OK();
   }
-
+  // fsync（当前目录下--这个不知道准不准确）Manifest文件，如果存在的话
   Status SyncDirIfManifest() {
     const char* f = filename_.c_str();
     const char* sep = strrchr(f, '/');
@@ -238,9 +252,10 @@ class PosixWritableFile : public WritableFile {
     }
     return s;
   }
-
+  // 将文件内容sync到硬盘
   virtual Status Sync() {
     // Ensure new files referred to by the manifest are in the filesystem.
+    // 同事要保证manifest也要在filesystem中
     Status s = SyncDirIfManifest();
     if (!s.ok()) {
       return s;
@@ -252,7 +267,7 @@ class PosixWritableFile : public WritableFile {
     return s;
   }
 };
-
+// 上锁或者解锁文件，用fcntl
 static int LockOrUnlock(int fd, bool lock) {
   errno = 0;
   struct flock f;
@@ -263,7 +278,7 @@ static int LockOrUnlock(int fd, bool lock) {
   f.l_len = 0;        // Lock/unlock entire file
   return fcntl(fd, F_SETLK, &f);
 }
-
+// PosixFileLock就是长这样。。。
 class PosixFileLock : public FileLock {
  public:
   int fd_;
@@ -273,6 +288,7 @@ class PosixFileLock : public FileLock {
 // Set of locked files.  We keep a separate set instead of just
 // relying on fcntrl(F_SETLK) since fcntl(F_SETLK) does not provide
 // any protection against multiple uses from the same process.
+// 用于管理lockfile的table，详情看上面英文介绍
 class PosixLockTable {
  private:
   port::Mutex mu_;
@@ -296,7 +312,7 @@ class PosixEnv : public Env {
     fwrite(msg, 1, sizeof(msg), stderr);
     abort();
   }
-
+  // 结合上面提供PosixSequentialFile 传入适当的参数
   virtual Status NewSequentialFile(const std::string& fname,
                                    SequentialFile** result) {
     FILE* f = fopen(fname.c_str(), "r");
@@ -336,7 +352,7 @@ class PosixEnv : public Env {
     }
     return s;
   }
-
+  // 结合上面的PosixWritableFile， 传入适当的参数
   virtual Status NewWritableFile(const std::string& fname,
                                  WritableFile** result) {
     Status s;
@@ -349,7 +365,7 @@ class PosixEnv : public Env {
     }
     return s;
   }
-
+  // 结合PosixWritableFile传入适当的参数
   virtual Status NewAppendableFile(const std::string& fname,
                                    WritableFile** result) {
     Status s;
@@ -364,9 +380,11 @@ class PosixEnv : public Env {
   }
 
   virtual bool FileExists(const std::string& fname) {
+    // access() checks whether the calling process can access the file pathname.
+    // If pathname is a symbolic link, it is dereferenced.
     return access(fname.c_str(), F_OK) == 0;
   }
-
+  // posix下的目录打开，关闭，读操作均在下面了
   virtual Status GetChildren(const std::string& dir,
                              std::vector<std::string>* result) {
     result->clear();
@@ -381,7 +399,7 @@ class PosixEnv : public Env {
     closedir(d);
     return Status::OK();
   }
-
+  // posix下的文件删除操作
   virtual Status DeleteFile(const std::string& fname) {
     Status result;
     if (unlink(fname.c_str()) != 0) {
@@ -389,7 +407,7 @@ class PosixEnv : public Env {
     }
     return result;
   }
-
+  // posix新建dir操作
   virtual Status CreateDir(const std::string& name) {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
@@ -397,7 +415,7 @@ class PosixEnv : public Env {
     }
     return result;
   }
-
+  // posix删除目录的操作
   virtual Status DeleteDir(const std::string& name) {
     Status result;
     if (rmdir(name.c_str()) != 0) {
@@ -405,7 +423,7 @@ class PosixEnv : public Env {
     }
     return result;
   }
-
+  // posix的获取stat 后再获取大小，发现跟node完全就是用这些来命名的
   virtual Status GetFileSize(const std::string& fname, uint64_t* size) {
     Status s;
     struct stat sbuf;
@@ -417,7 +435,7 @@ class PosixEnv : public Env {
     }
     return s;
   }
-
+  // posix的rename方法
   virtual Status RenameFile(const std::string& src, const std::string& target) {
     Status result;
     if (rename(src.c_str(), target.c_str()) != 0) {
@@ -425,7 +443,7 @@ class PosixEnv : public Env {
     }
     return result;
   }
-
+  // 用上面的LockOrUnlock来实现lockfile，同时用_locks 文件锁table来管理
   virtual Status LockFile(const std::string& fname, FileLock** lock) {
     *lock = NULL;
     Status result;
@@ -447,7 +465,7 @@ class PosixEnv : public Env {
     }
     return result;
   }
-
+  // 用上面的LockOrUnlock来实现unlockfile，同时用_locks 文件锁table来管理
   virtual Status UnlockFile(FileLock* lock) {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
@@ -463,7 +481,7 @@ class PosixEnv : public Env {
   virtual void Schedule(void (*function)(void*), void* arg);
 
   virtual void StartThread(void (*function)(void* arg), void* arg);
-
+  // 获取测试目录的方法，先通过getenv来找对应的路径，没得话就用［"/tmp/leveldbtest-%d", int(geteuid())］
   virtual Status GetTestDirectory(std::string* result) {
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
@@ -477,14 +495,14 @@ class PosixEnv : public Env {
     CreateDir(*result);
     return Status::OK();
   }
-
+  // 返回现在线程的id
   static uint64_t gettid() {
     pthread_t tid = pthread_self();
     uint64_t thread_id = 0;
     memcpy(&thread_id, &tid, std::min(sizeof(thread_id), sizeof(tid)));
     return thread_id;
   }
-
+  // PosixLogger在"posix_logger.h"文件中
   virtual Status NewLogger(const std::string& fname, Logger** result) {
     FILE* f = fopen(fname.c_str(), "w");
     if (f == NULL) {
@@ -495,18 +513,19 @@ class PosixEnv : public Env {
       return Status::OK();
     }
   }
-
+  // 获取现在的毫秒数
   virtual uint64_t NowMicros() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
-
+  // sleep micros 毫秒
   virtual void SleepForMicroseconds(int micros) {
     usleep(micros);
   }
 
  private:
+  // 使用pthred库是的一个供打印的before函数
   void PthreadCall(const char* label, int result) {
     if (result != 0) {
       fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
@@ -516,6 +535,7 @@ class PosixEnv : public Env {
 
   // BGThread() is the body of the background thread
   void BGThread();
+  // 运行body of background thread
   static void* BGThreadWrapper(void* arg) {
     reinterpret_cast<PosixEnv*>(arg)->BGThread();
     return NULL;
@@ -534,7 +554,7 @@ class PosixEnv : public Env {
   PosixLockTable locks_;
   MmapLimiter mmap_limit_;
 };
-
+// 创建env时默认初始化mutex和cond
 PosixEnv::PosixEnv() : started_bgthread_(false) {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, NULL));
   PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, NULL));
@@ -544,7 +564,9 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
 
   // Start background thread if necessary
+  // 如果是第一次用后台运行，则用创建后台线程
   if (!started_bgthread_) {
+    // 从此后台线程一直存在
     started_bgthread_ = true;
     PthreadCall(
         "create thread",
@@ -553,11 +575,13 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 
   // If the queue is currently empty, the background thread may currently be
   // waiting.
+  // 如果运行队列里是空的则，后台线程在等待cond来驱动运行，所以，发出信号
   if (queue_.empty()) {
     PthreadCall("signal", pthread_cond_signal(&bgsignal_));
   }
 
   // Add to priority queue
+  // 添加到后台函数运行队列，让后台线程运行
   queue_.push_back(BGItem());
   queue_.back().function = function;
   queue_.back().arg = arg;
@@ -566,13 +590,14 @@ void PosixEnv::Schedule(void (*function)(void*), void* arg) {
 }
 
 void PosixEnv::BGThread() {
+  // 一直运行在后台，知道有线程可以运行
   while (true) {
     // Wait until there is an item that is ready to run
     PthreadCall("lock", pthread_mutex_lock(&mu_));
     while (queue_.empty()) {
       PthreadCall("wait", pthread_cond_wait(&bgsignal_, &mu_));
     }
-
+    // 后台线程从函数队列里选取来运行，采取先到先运行的原则
     void (*function)(void*) = queue_.front().function;
     void* arg = queue_.front().arg;
     queue_.pop_front();
@@ -588,13 +613,14 @@ struct StartThreadState {
   void* arg;
 };
 }
+// 用于运行给定的函数user_function
 static void* StartThreadWrapper(void* arg) {
   StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
   state->user_function(state->arg);
   delete state;
   return NULL;
 }
-
+// 开始新的线程用于运行给定的函数
 void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
   pthread_t t;
   StartThreadState* state = new StartThreadState;
@@ -607,10 +633,18 @@ void PosixEnv::StartThread(void (*function)(void* arg), void* arg) {
 }  // namespace
 
 static pthread_once_t once = PTHREAD_ONCE_INIT;
+// static的全局env
 static Env* default_env;
 static void InitDefaultEnv() { default_env = new PosixEnv; }
 
 Env* Env::Default() {
+  // 用于只运行一次的pthread_once
+  // 介绍The first call to pthread_once() by any thread in a process,
+  // with a given once_control, will call the init_routine() with no arguments.
+  // Subsequent calls of pthread_once() with the same once_control will not call the init_routine().
+  // On return from pthread_once(), it is guaranteed that init_routine() has completed.
+  // The once_control parameter is used to determine whether the associated
+  // initialisation routine has been called.
   pthread_once(&once, InitDefaultEnv);
   return default_env;
 }

@@ -8,7 +8,7 @@
 #include "leveldb/env.h"
 
 namespace leveldb {
-
+// 默认配置，多是bool类型，当然还有些size，FilterPolicy之类的
 Options::Options()
     : comparator(BytewiseComparator()),
       create_if_missing(false),
