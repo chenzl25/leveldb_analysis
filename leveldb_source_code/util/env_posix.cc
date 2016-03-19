@@ -106,6 +106,8 @@ class PosixRandomAccessFile: public RandomAccessFile {
 // Helper class to limit mmap file usage so that we do not end up
 // running out virtual memory or running into kernel performance
 // problems for very large databases.
+// 控制mmap file用量的控制器
+// 里面用了AtomicPointer，现在还是不大清楚原理，以后补充
 class MmapLimiter {
  public:
   // Up to 1000 mmaps for 64-bit binaries; none for smaller pointer sizes.
@@ -153,6 +155,7 @@ class MmapLimiter {
 };
 
 // mmap() based random-access
+// 这里有一点不理解，就是，析构函数里调用了limiter_->Release();却没有Acquire
 class PosixMmapReadableFile: public RandomAccessFile {
  private:
   std::string filename_;
@@ -559,6 +562,33 @@ PosixEnv::PosixEnv() : started_bgthread_(false) {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, NULL));
   PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, NULL));
 }
+/*=================================
+=            schdule流程            =
+=================================*/
+
+// 这里详细讲述一下这里的Schedule BGThread流程
+// queue里存的则是多个待函数
+// 首先调用Schedule的主线程是获取锁
+// 如果是第一次调用Schedule时候，会创建一个新的后台运行进程（只有一个）
+// 后台线程马上进入while（true）循环，并尝试获取锁
+// 由于锁在主线程中，所以主线程会检查到queue位空（第一次嘛）
+// 所以发出signal（这时候没用，因为bg线程没在wait）
+// 后来，主线程在queue中加入了函数，解锁
+// 马上bg线程就会获得锁，同时发现queue不为空（长度为1嘛）
+// 所以马上就执行函数了
+// 后来解锁，又再次回到while开始，如果这时候又再次获取锁成功，
+// 则会发现queue为空，这时候会调用wait方法等待（自动释放锁）。
+// 若干时间后，主线程有开始发任务啦
+// 主线程获取锁成功，由于不是第一次了，所以不会再创建线程
+// 发现队列为空，就发出signal信号，同时往queue里加入函数，解锁
+// 这时候，bg线程收到通知就会自动获取锁
+// 发现queue又不为空了，就继续执行函数，之后再解锁
+// 。。。the end
+// 可见这里queue没什么用呀，每次都只是一个一个执行的，看来要pull request一下了
+// 但是！！可能还会有其它地方用了这个锁的话，导致schedule了好几次都轮不到bg线程来运行的话呢
+// 这就必需要有queue了，所以还是jeff大大想得周全
+
+/*=====  End of schdule流程  ======*/
 
 void PosixEnv::Schedule(void (*function)(void*), void* arg) {
   PthreadCall("lock", pthread_mutex_lock(&mu_));
