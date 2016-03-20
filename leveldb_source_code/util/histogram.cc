@@ -8,7 +8,9 @@
 #include "util/histogram.h"
 
 namespace leveldb {
-
+// 默认有154个bucket，其中每个bucket存的数是个数
+// 其中值属于limit比他大的最小的bucket里面
+// 这样来实现区间
 const double Histogram::kBucketLimit[kNumBuckets] = {
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 45,
   50, 60, 70, 80, 90, 100, 120, 140, 160, 180, 200, 250, 300, 350, 400, 450,
@@ -29,7 +31,7 @@ const double Histogram::kBucketLimit[kNumBuckets] = {
   5000000000.0, 6000000000.0, 7000000000.0, 8000000000.0, 9000000000.0,
   1e200,
 };
-
+// 清除函数
 void Histogram::Clear() {
   min_ = kBucketLimit[kNumBuckets-1];
   max_ = 0;
@@ -40,7 +42,7 @@ void Histogram::Clear() {
     buckets_[i] = 0;
   }
 }
-
+// 加入一个数字，会寻找合适的bucket，并更新num sum sum_squares等等
 void Histogram::Add(double value) {
   // Linear search is fast enough for our usage in db_bench
   int b = 0;
@@ -54,7 +56,7 @@ void Histogram::Add(double value) {
   sum_ += value;
   sum_squares_ += (value * value);
 }
-
+// merge两个直方图
 void Histogram::Merge(const Histogram& other) {
   if (other.min_ < min_) min_ = other.min_;
   if (other.max_ > max_) max_ = other.max_;
@@ -65,11 +67,11 @@ void Histogram::Merge(const Histogram& other) {
     buckets_[b] += other.buckets_[b];
   }
 }
-
+// 中位数
 double Histogram::Median() const {
   return Percentile(50.0);
 }
-
+// 返回百分位数，非常清晰，先计算在区间两边的数的个数，再取距离的百分数+上左边的bucket的limit
 double Histogram::Percentile(double p) const {
   double threshold = num_ * (p / 100.0);
   double sum = 0;
@@ -90,18 +92,18 @@ double Histogram::Percentile(double p) const {
   }
   return max_;
 }
-
+// 平均值
 double Histogram::Average() const {
   if (num_ == 0.0) return 0;
   return sum_ / num_;
 }
-
+// 标准差
 double Histogram::StandardDeviation() const {
   if (num_ == 0.0) return 0;
   double variance = (sum_squares_ * num_ - sum_ * sum_) / (num_ * num_);
   return sqrt(variance);
 }
-
+// 优美的toString函数
 std::string Histogram::ToString() const {
   std::string r;
   char buf[200];

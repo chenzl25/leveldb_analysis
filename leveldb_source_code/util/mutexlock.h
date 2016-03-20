@@ -19,7 +19,8 @@ namespace leveldb {
 //     MutexLock l(&mu_);       // mu_ is an instance variable
 //     ... some complex code, possibly with multiple return paths ...
 //   }
-
+// 一个helper class 用于将mutex在构造函数中上锁，析构函数中解锁
+// 以posix为内部实现的话，头文件在"port/port_posix.h"中
 class SCOPED_LOCKABLE MutexLock {
  public:
   explicit MutexLock(port::Mutex *mu) EXCLUSIVE_LOCK_FUNCTION(mu)

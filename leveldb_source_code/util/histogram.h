@@ -8,7 +8,7 @@
 #include <string>
 
 namespace leveldb {
-
+// 直方图类
 class Histogram {
  public:
   Histogram() { }

@@ -7,6 +7,15 @@
 
 #include <stdint.h>
 
+/*==============================
+=            Random            =
+==============================*/
+
+// 简单的随机数生成器
+
+/*=====  End of Random  ======*/
+
+
 namespace leveldb {
 
 // A very simple random number generator.  Not especially good at
@@ -16,13 +25,16 @@ class Random {
  private:
   uint32_t seed_;
  public:
+  // 构造函数，设置种子
   explicit Random(uint32_t s) : seed_(s & 0x7fffffffu) {
     // Avoid bad seeds.
+    // 防止坏种子
     if (seed_ == 0 || seed_ == 2147483647L) {
       seed_ = 1;
     }
   }
   uint32_t Next() {
+    // 计算seed_ = (seed_ * A) % M,的快速方法
     static const uint32_t M = 2147483647L;   // 2^31-1
     static const uint64_t A = 16807;  // bits 14, 8, 7, 5, 2, 1, 0
     // We are computing
@@ -45,15 +57,18 @@ class Random {
   }
   // Returns a uniformly distributed value in the range [0..n-1]
   // REQUIRES: n > 0
+  // 取在区间[0..n-1]的均匀分布整数
   uint32_t Uniform(int n) { return Next() % n; }
 
   // Randomly returns true ~"1/n" of the time, and false otherwise.
   // REQUIRES: n > 0
+  // 以概率为1/n的返回true
   bool OneIn(int n) { return (Next() % n) == 0; }
 
   // Skewed: pick "base" uniformly from range [0,max_log] and then
   // return "base" random bits.  The effect is to pick a number in the
   // range [0,2^max_log-1] with exponential bias towards smaller numbers.
+  // 先取[0,max_log] 得均匀分布再扩大到[0,2^max_log-1]
   uint32_t Skewed(int max_log) {
     return Uniform(1 << Uniform(max_log + 1));
   }

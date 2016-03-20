@@ -122,6 +122,9 @@ inline void MemoryBarrier() {
 #endif
 
 // AtomicPointer built using platform-specific MemoryBarrier()
+// 当平台有内存屏障的函数时候就直接用来实现
+// 内存屏障，保证cpu，compiler对内存的访问顺序呢，看wiki，google
+// rep就是个void* 指针
 #if defined(LEVELDB_HAVE_MEMORY_BARRIER)
 class AtomicPointer {
  private:
@@ -133,20 +136,21 @@ class AtomicPointer {
   inline void NoBarrier_Store(void* v) { rep_ = v; }
   inline void* Acquire_Load() const {
     void* result = rep_;
-    MemoryBarrier();
+    MemoryBarrier(); //相当于个强制控制顺序的东东
     return result;
   }
   inline void Release_Store(void* v) {
-    MemoryBarrier();
+    MemoryBarrier();//相当于个强制控制顺序的东东
     rep_ = v;
   }
 };
 
 // AtomicPointer based on <cstdatomic>
+// 当平台没有内存屏障的实现的时候就用<cstdatomic> 来实现AtomicPointer
 #elif defined(LEVELDB_ATOMIC_PRESENT)
 class AtomicPointer {
  private:
-  std::atomic<void*> rep_;
+  std::atomic<void*> rep_;  //std的atomic
  public:
   AtomicPointer() { }
   explicit AtomicPointer(void* v) : rep_(v) { }
@@ -165,6 +169,7 @@ class AtomicPointer {
 };
 
 // Atomic pointer based on sparc memory barriers
+// 用汇编来实现，厉害
 #elif defined(__sparcv9) && defined(__GNUC__)
 class AtomicPointer {
  private:
@@ -195,6 +200,7 @@ class AtomicPointer {
 };
 
 // Atomic pointer based on ia64 acq/rel
+// 用汇编来实现，厉害
 #elif defined(__ia64) && defined(__GNUC__)
 class AtomicPointer {
  private:

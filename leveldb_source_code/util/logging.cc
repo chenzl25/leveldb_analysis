@@ -12,13 +12,13 @@
 #include "leveldb/slice.h"
 
 namespace leveldb {
-
+// 加入数字
 void AppendNumberTo(std::string* str, uint64_t num) {
   char buf[30];
   snprintf(buf, sizeof(buf), "%llu", (unsigned long long) num);
   str->append(buf);
 }
-
+// 加入字符串，其中不可打印的字符会转义
 void AppendEscapedStringTo(std::string* str, const Slice& value) {
   for (size_t i = 0; i < value.size(); i++) {
     char c = value[i];
@@ -32,19 +32,19 @@ void AppendEscapedStringTo(std::string* str, const Slice& value) {
     }
   }
 }
-
+// 复用AppendNumberTo
 std::string NumberToString(uint64_t num) {
   std::string r;
   AppendNumberTo(&r, num);
   return r;
 }
-
+// 复用AppendEscapedStringTo
 std::string EscapeString(const Slice& value) {
   std::string r;
   AppendEscapedStringTo(&r, value);
   return r;
 }
-
+// 读回in中的十进制数字到val
 bool ConsumeDecimalNumber(Slice* in, uint64_t* val) {
   uint64_t v = 0;
   int digits = 0;

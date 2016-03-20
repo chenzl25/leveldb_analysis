@@ -56,6 +56,7 @@
     defined(OS_NETBSD) || defined(OS_OPENBSD) || defined(OS_DRAGONFLYBSD) ||\
     defined(OS_ANDROID) || defined(OS_HPUX) || defined(CYGWIN)
 // Use fread/fwrite/fflush on platforms without _unlocked variants
+// 将没有lock的文件操作alias
 #define fread_unlocked fread
 #define fwrite_unlocked fwrite
 #define fflush_unlocked fflush
@@ -64,6 +65,7 @@
 #if defined(OS_MACOSX) || defined(OS_FREEBSD) ||\
     defined(OS_OPENBSD) || defined(OS_DRAGONFLYBSD)
 // Use fsync() on platforms without fdatasync()
+// 直接把fdatasync 搞成了fsync
 #define fdatasync fsync
 #endif
 
@@ -73,6 +75,15 @@
 #define fdatasync fsync
 #endif
 
+/*==================================
+=            port_posix            =
+==================================*/
+
+// 平台为posix
+
+/*=====  End of port_posix  ======*/
+
+
 namespace leveldb {
 namespace port {
 
@@ -80,7 +91,7 @@ static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 #undef PLATFORM_IS_LITTLE_ENDIAN
 
 class CondVar;
-
+// 互斥锁
 class Mutex {
  public:
   Mutex();
@@ -98,7 +109,7 @@ class Mutex {
   Mutex(const Mutex&);
   void operator=(const Mutex&);
 };
-
+// condition varible
 class CondVar {
  public:
   explicit CondVar(Mutex* mu);
@@ -114,7 +125,7 @@ class CondVar {
 typedef pthread_once_t OnceType;
 #define LEVELDB_ONCE_INIT PTHREAD_ONCE_INIT
 extern void InitOnce(OnceType* once, void (*initializer)());
-
+// 转调用snappy的函数
 inline bool Snappy_Compress(const char* input, size_t length,
                             ::std::string* output) {
 #ifdef SNAPPY
@@ -127,7 +138,7 @@ inline bool Snappy_Compress(const char* input, size_t length,
 
   return false;
 }
-
+// 转调用snappy的函数
 inline bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                          size_t* result) {
 #ifdef SNAPPY
@@ -136,7 +147,7 @@ inline bool Snappy_GetUncompressedLength(const char* input, size_t length,
   return false;
 #endif
 }
-
+// 转调用snappy的函数
 inline bool Snappy_Uncompress(const char* input, size_t length,
                               char* output) {
 #ifdef SNAPPY
@@ -145,7 +156,7 @@ inline bool Snappy_Uncompress(const char* input, size_t length,
   return false;
 #endif
 }
-
+// 不提供heapProfile的功能
 inline bool GetHeapProfile(void (*func)(void*, const char*, int), void* arg) {
   return false;
 }

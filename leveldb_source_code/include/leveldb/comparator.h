@@ -64,7 +64,7 @@ class Comparator {
   // i.e., an implementation of this method that does nothing is correct.
   // 找出区间[start, limit]之间的最短的分割Slice
   // 主要用以后面sstable中的block的endkey，节约空间
-  // start会可能改变
+  // start会改变，如果找到不同于start的
   // 简单什么都不做的也是正确的实现
   virtual void FindShortestSeparator(
       std::string* start,
@@ -80,7 +80,8 @@ class Comparator {
 // Return a builtin comparator that uses lexicographic byte-wise
 // ordering.  The result remains the property of this module and
 // must not be deleted.
-// builtin的Comparator，简单的字母表顺序
+// 内部Slice的比较，基于memcmp，所以叫bytewisecomparator
+// builtin的Comparator，BytewiseComparator
 extern const Comparator* BytewiseComparator();
 
 }  // namespace leveldb

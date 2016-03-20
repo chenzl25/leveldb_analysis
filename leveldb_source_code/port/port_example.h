@@ -95,10 +95,12 @@ extern void InitOnce(port::OnceType*, void (*initializer)());
 
 // A type that holds a pointer that can be read or written atomically
 // (i.e., without word-tearing.)
-// 一个可以保存进行原子读和写的指针的类型
+// 一个用来存指针的类，里面保证了存和读的时候是atomically的
+// 用MemoryBarrier来实现，防止编译器优化掉了一些看似无意义的代码
 // 例如，without word-tearing
 class AtomicPointer {
  private:
+  // 就是一个存进，拿出的指针，但要保证内存访问的顺序，所以是个AtomicPointer
   intptr_t rep_;
  public:
   // Initialize to arbitrary value
@@ -120,11 +122,11 @@ class AtomicPointer {
   void Release_Store(void* v);
 
   // Read the stored pointer with no ordering guarantees.
-  // 没顺序保障的load
+  // 没顺序保障的load出指针
   void* NoBarrier_Load() const;
 
   // Set va as the stored pointer with no ordering guarantees.
-  // 没顺序保障的store
+  // 没顺序保障的store入指针
   void NoBarrier_Store(void* v);
 };
 

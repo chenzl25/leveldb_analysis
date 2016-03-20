@@ -61,6 +61,7 @@ class FilterPolicy {
   // append the newly constructed filter to *dst.
   // 创建filter，其中keys是一系列的key的集合，通过指针（数组）组织起来
   // 上面英文说的是把filter append 到 dst里。 还没看到使用在那里，以后补充
+  // ps：dst的内容不会被修改，而是会直接append真个filter到后面（可能是提高性能）
   virtual void CreateFilter(const Slice* keys, int n, std::string* dst)
       const = 0;
 
@@ -69,10 +70,13 @@ class FilterPolicy {
   // the key was in the list of keys passed to CreateFilter().
   // This method may return true or false if the key was not on the
   // list, but it should aim to return false with a high probability.
-  // 这里有bloom filter的味道
-  // 这个函数是对上面CreateFilter的函数中闯入的keys进行match
-  // 如果key 在fileter 的list中则返回true
-  // 否则尽量以较高的概率返回false
+  // 这里有bloom filter的味道，差点当成bloom filter来看了，其实用户可以自己制定
+  // 这里检测key是否在filter中
+  // 要求：对于在创建filter时的keys集合中的key必需返回true
+  //      对于不在创建时候的key返回true或者false，但应该尽量以较高的概率返回false
+  // 作用：减少IO，应为如果filter返回的是false，则我们就不用去进行IO就知道key不在硬盘中
+  //      而true得话呢，就会进行IO，虽然实际上也不在硬盘中，但是我们减少出错的概率
+  //      就能换来更好的性能了
   virtual bool KeyMayMatch(const Slice& key, const Slice& filter) const = 0;
 };
 

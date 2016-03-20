@@ -68,6 +68,8 @@ class Cache {
   // value will be passed to "deleter".
   // 插入到Cache中的函数
   // 包括键key，值value，（估计的大小charge，可能用于估算在cache中占的位置是多少）
+  // value只是个void* 指针，不做拷贝
+  // 而key是会在内部做memcpy的
   // charge可以取变长string的长度来估算
   // deleter用于当键值不用的时候的处理
   virtual Handle* Insert(const Slice& key, void* value, size_t charge,
@@ -79,6 +81,7 @@ class Cache {
   // must call this->Release(handle) when the returned mapping is no
   // longer needed.
   // 对于查询的key返回对应的handle
+  // 如果不存在返回NULL
   // 当handle不用时要记得release掉
   // 因为在用的handle是不会被LRUcacahe替换的
   virtual Handle* Lookup(const Slice& key) = 0;
@@ -93,7 +96,7 @@ class Cache {
   // successful Lookup().
   // REQUIRES: handle must not have been released yet.
   // REQUIRES: handle must have been returned by a method on *this.
-  // 根据handle返回value
+  // 根据handle返回value 是个void* 指针
   virtual void* Value(Handle* handle) = 0;
 
   // If the cache contains entry for key, erase it.  Note that the
