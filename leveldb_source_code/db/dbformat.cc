@@ -8,18 +8,18 @@
 #include "util/coding.h"
 
 namespace leveldb {
-
+// 将SequencNumber'和ValueType组合成SequencNumber
 static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);
   assert(t <= kValueTypeForSeek);
   return (seq << 8) | t;
 }
-
+// 将parsedInternalKeyencode到result中，其中对SequencNumber进行encode
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   result->append(key.user_key.data(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
 }
-
+// Debug用的，打印好看的ParsedInternalKey
 std::string ParsedInternalKey::DebugString() const {
   char buf[50];
   snprintf(buf, sizeof(buf), "' @ %llu : %d",
@@ -31,6 +31,7 @@ std::string ParsedInternalKey::DebugString() const {
   return result;
 }
 
+// Debug用的，打印好看的InternalKey
 std::string InternalKey::DebugString() const {
   std::string result;
   ParsedInternalKey parsed;
@@ -42,16 +43,17 @@ std::string InternalKey::DebugString() const {
   }
   return result;
 }
-
+// InternalKeyComparator的Name
 const char* InternalKeyComparator::Name() const {
   return "leveldb.InternalKeyComparator";
 }
-
+// InternalKeyComparator的比较实现
 int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   // Order by:
   //    increasing user key (according to user-supplied comparator)
   //    decreasing sequence number
-  //    decreasing type (though sequence# should be enough to disambiguate)
+  //    decreasing type (though sequence# should be enough to disambiguate) 
+  //    对sequence#（即是SequenceNumber‘）足以去除二义性了
   int r = user_comparator_->Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   if (r == 0) {
     const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8);
@@ -64,7 +66,7 @@ int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   }
   return r;
 }
-
+// InternalKeyComparator的FindShortestSeparator用了user_comparator_的FindShortestSeparator
 void InternalKeyComparator::FindShortestSeparator(
       std::string* start,
       const Slice& limit) const {
@@ -77,13 +79,14 @@ void InternalKeyComparator::FindShortestSeparator(
       user_comparator_->Compare(user_start, tmp) < 0) {
     // User key has become shorter physically, but larger logically.
     // Tack on the earliest possible number to the shortened user key.
+    // 找到后会用kMaxSequenceNumber、kValueTypeForSeek来encode后面的SequenceNumber
     PutFixed64(&tmp, PackSequenceAndType(kMaxSequenceNumber,kValueTypeForSeek));
     assert(this->Compare(*start, tmp) < 0);
     assert(this->Compare(tmp, limit) < 0);
     start->swap(tmp);
   }
 }
-
+// 同上道理
 void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
   Slice user_key = ExtractUserKey(*key);
   std::string tmp(user_key.data(), user_key.size());
@@ -97,11 +100,12 @@ void InternalKeyComparator::FindShortSuccessor(std::string* key) const {
     key->swap(tmp);
   }
 }
-
+// InternalFilterPolicy只是user_policy_的wrapper
 const char* InternalFilterPolicy::Name() const {
   return user_policy_->Name();
 }
-
+// InternalFilterPolicy只是user_policy_的wrapper
+// 所以会提取出UserKey来用user_policy_
 void InternalFilterPolicy::CreateFilter(const Slice* keys, int n,
                                         std::string* dst) const {
   // We rely on the fact that the code in table.cc does not mind us
@@ -113,13 +117,14 @@ void InternalFilterPolicy::CreateFilter(const Slice* keys, int n,
   }
   user_policy_->CreateFilter(keys, n, dst);
 }
-
+// 转用user_policy_来判断
 bool InternalFilterPolicy::KeyMayMatch(const Slice& key, const Slice& f) const {
   return user_policy_->KeyMayMatch(ExtractUserKey(key), f);
 }
-
+// 
 LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
   size_t usize = user_key.size();
+  // 保守估计 5 + usize + 8
   size_t needed = usize + 13;  // A conservative estimate
   char* dst;
   if (needed <= sizeof(space_)) {
@@ -128,6 +133,7 @@ LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
     dst = new char[needed];
   }
   start_ = dst;
+  // 这里的长度是usize + 8，说明是internal_key的长度
   dst = EncodeVarint32(dst, usize + 8);
   kstart_ = dst;
   memcpy(dst, user_key.data(), usize);
