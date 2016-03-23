@@ -11,20 +11,20 @@
 
 namespace leveldb {
 namespace log {
-
+// 初始化recordtype的crc32c值
 static void InitTypeCrc(uint32_t* type_crc) {
   for (int i = 0; i <= kMaxRecordType; i++) {
     char t = static_cast<char>(i);
     type_crc[i] = crc32c::Value(&t, 1);
   }
 }
-
+// 空的dest的初始化
 Writer::Writer(WritableFile* dest)
     : dest_(dest),
       block_offset_(0) {
   InitTypeCrc(type_crc_);
 }
-
+// 有长度的dest的初始化
 Writer::Writer(WritableFile* dest, uint64_t dest_length)
     : dest_(dest), block_offset_(dest_length % kBlockSize) {
   InitTypeCrc(type_crc_);
@@ -45,6 +45,8 @@ Status Writer::AddRecord(const Slice& slice) {
   do {
     const int leftover = kBlockSize - block_offset_;
     assert(leftover >= 0);
+    // block剩余空间小于kHeaderSize就填充0
+    // 如果等于kHeaderSize，还会试图使用来存data为空的记录（无语。。。)
     if (leftover < kHeaderSize) {
       // Switch to a new block
       if (leftover > 0) {
@@ -60,7 +62,7 @@ Status Writer::AddRecord(const Slice& slice) {
 
     const size_t avail = kBlockSize - block_offset_ - kHeaderSize;
     const size_t fragment_length = (left < avail) ? left : avail;
-
+    // 判断record类型
     RecordType type;
     const bool end = (left == fragment_length);
     if (begin && end) {
@@ -72,7 +74,7 @@ Status Writer::AddRecord(const Slice& slice) {
     } else {
       type = kMiddleType;
     }
-
+    // flush到文件中
     s = EmitPhysicalRecord(type, ptr, fragment_length);
     ptr += fragment_length;
     left -= fragment_length;
@@ -82,18 +84,24 @@ Status Writer::AddRecord(const Slice& slice) {
 }
 
 Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr, size_t n) {
+  // data长度最多2^16-1
   assert(n <= 0xffff);  // Must fit in two bytes
   assert(block_offset_ + kHeaderSize + n <= kBlockSize);
 
   // Format the header
+  // record header的format
   char buf[kHeaderSize];
+  // little-edian 编码
   buf[4] = static_cast<char>(n & 0xff);
   buf[5] = static_cast<char>(n >> 8);
   buf[6] = static_cast<char>(t);
 
   // Compute the crc of the record type and the payload.
+  // 用到了提前储存的type_crc_，再扩展即可，减少开销，空间换时间
   uint32_t crc = crc32c::Extend(type_crc_[t], ptr, n);
+  // 每次存之前都Mask下，记得之前有提过，取回来时再unMask
   crc = crc32c::Mask(crc);                 // Adjust for storage
+  // 编码储存
   EncodeFixed32(buf, crc);
 
   // Write the header and the payload

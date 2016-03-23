@@ -46,11 +46,11 @@ class WriteBatch {
   ~WriteBatch();
 
   // Store the mapping "key->value" in the database.
-  // 插入或更新
+  // 插入或更新到batch中
   void Put(const Slice& key, const Slice& value);
 
   // If the database contains a mapping for "key", erase it.  Else do nothing.
-  // 删除
+  // 删除batch里面的东西
   void Delete(const Slice& key);
 
   // Clear all updates buffered in this batch.
@@ -59,7 +59,7 @@ class WriteBatch {
 
   // Support for iterating over the contents of a batch.
   // 内部类Handler，感叹自己都没用过c++的内部类
-  // 处理函数，用于迭代batch内容
+  // 用于将操作作用到memtable中
   class Handler {
    public:
     virtual ~Handler();

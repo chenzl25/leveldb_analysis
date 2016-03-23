@@ -55,10 +55,12 @@ class PosixSequentialFile: public SequentialFile {
     Status s;
     // posix的fread方法 fread_unclocked，不需要thread-safe
     size_t r = fread_unlocked(scratch, 1, n, file_);
+    // r 应该是读取到的长度
     *result = Slice(scratch, r);
     if (r < n) {
       if (feof(file_)) {
         // We leave status as ok if we hit the end of the file
+        // 遇到eof当正常处理
       } else {
         // A partial read with an error: return a non-ok status
         s = IOError(filename_, errno);
@@ -221,7 +223,7 @@ class PosixWritableFile : public WritableFile {
     file_ = NULL;
     return result;
   }
-
+  // flush到操作系统
   virtual Status Flush() {
     if (fflush_unlocked(file_) != 0) {
       return IOError(filename_, errno);
@@ -356,7 +358,7 @@ class PosixEnv : public Env {
     return s;
   }
   // 结合上面的PosixWritableFile， 传入适当的参数
-  virtual Status NewWritableFile(const std::string& fname,
+  virtual Status write(const std::string& fname,
                                  WritableFile** result) {
     Status s;
     FILE* f = fopen(fname.c_str(), "w");

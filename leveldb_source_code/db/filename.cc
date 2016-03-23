@@ -12,9 +12,10 @@
 namespace leveldb {
 
 // A utility routine: write "data" to the named file and Sync() it.
+// 一个通用的routine，把数据data写到名为fname的文件中，然后Sync
 extern Status WriteStringToFileSync(Env* env, const Slice& data,
                                     const std::string& fname);
-
+// 构造文件名的格式
 static std::string MakeFileName(const std::string& name, uint64_t number,
                                 const char* suffix) {
   char buf[100];
@@ -38,7 +39,7 @@ std::string SSTTableFileName(const std::string& name, uint64_t number) {
   assert(number > 0);
   return MakeFileName(name, number, "sst");
 }
-
+// DescriptorFileName的名字构造
 std::string DescriptorFileName(const std::string& dbname, uint64_t number) {
   assert(number > 0);
   char buf[100];
@@ -77,6 +78,7 @@ std::string OldInfoLogFileName(const std::string& dbname) {
 //    dbname/LOG.old
 //    dbname/MANIFEST-[0-9]+
 //    dbname/[0-9]+.(log|sst|ldb)
+// 流程清晰阅读即可
 bool ParseFileName(const std::string& fname,
                    uint64_t* number,
                    FileType* type) {

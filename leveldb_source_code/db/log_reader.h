@@ -17,15 +17,19 @@ class SequentialFile;
 
 namespace log {
 
+// 读log的抽象
+
 class Reader {
  public:
   // Interface for reporting errors.
+  // 一个用来报告错误的类
   class Reporter {
    public:
     virtual ~Reporter();
 
     // Some corruption was detected.  "size" is the approximate number
     // of bytes dropped due to the corruption.
+    // bytes是大概出错时候logfile的位置
     virtual void Corruption(size_t bytes, const Status& status) = 0;
   };
 
@@ -40,6 +44,8 @@ class Reader {
   //
   // The Reader will start reading at the first record located at physical
   // position >= initial_offset within the file.
+  // checksum用来决定是否检查checksum
+  // initial_offset可能是跳过一些额外的信息
   Reader(SequentialFile* file, Reporter* reporter, bool checksum,
          uint64_t initial_offset);
 
@@ -50,35 +56,52 @@ class Reader {
   // "*scratch" as temporary storage.  The contents filled in *record
   // will only be valid until the next mutating operation on this
   // reader or the next mutation to *scratch.
+  // 读record，返回到Slice* record中（仅仅指针），其中scratch是临时存的空间
   bool ReadRecord(Slice* record, std::string* scratch);
 
   // Returns the physical offset of the last record returned by ReadRecord.
   //
   // Undefined before the first call to ReadRecord.
+  // 返回最后一个被ReadRecord读出来是的physical offset，如果没调用过ReadRecord，结果undefined
   uint64_t LastRecordOffset();
 
  private:
   SequentialFile* const file_;
   Reporter* const reporter_;
   bool const checksum_;
+  // 实际上buffer的实体
   char* const backing_store_;
+  // 指向buffer区域的指针
+  // 由于进行IO的时候为了提高效率，一个block一个block的读
+  // 所以当block中的还没处理完的时候会先暂时存在 backing_store_ 和buffer_一起构建的buffer中
   Slice buffer_;
+  // 当最后一次Read()返回的block的大小 < kBlockSize的时候标志着eof
   bool eof_;   // Last Read() indicated EOF by returning < kBlockSize
 
   // Offset of the last record returned by ReadRecord.
+  // 返回最后一个被ReadRecord读出来是的physical offset
+  // 如果没调用过ReadRecord，结果undefined（实现中貌似是0）
   uint64_t last_record_offset_;
   // Offset of the first location past the end of buffer_.
+  // buffer_最后一位的下一位（英文居然是the first location past the end of buffer_.！）
   uint64_t end_of_buffer_offset_;
 
   // Offset at which to start looking for the first record to return
+  // 传入的initial_offset_，应该从这里开始读第一条record记录
   uint64_t const initial_offset_;
 
   // True if we are resynchronizing after a seek (initial_offset_ > 0). In
   // particular, a run of kMiddleType and kLastType records can be silently
   // skipped in this mode
+  // initial_offset_ = 0是可以不管这个变量
+  // 当initial_offset_ > 0时初始化为true
+  // 看log_reader.cc的实现来了解其作用
+  // 其中，可能在initial_offset_中读到的第一个record不是FirstType的
+  // 就需要不断移动到下一个FirstType中，所以中途的Middle 和 Last Type 跳过了
   bool resyncing_;
 
   // Extend record types with the following special values
+  // 扩展record type
   enum {
     kEof = kMaxRecordType + 1,
     // Returned whenever we find an invalid physical record.
@@ -92,9 +115,11 @@ class Reader {
   // Skips all blocks that are completely before "initial_offset_".
   //
   // Returns true on success. Handles reporting.
+  // 跳到initial_offset_所属的block
   bool SkipToInitialBlock();
 
   // Return type, or one of the preceding special values
+  // 读record
   unsigned int ReadPhysicalRecord(Slice* result);
 
   // Reports dropped bytes to the reporter.
