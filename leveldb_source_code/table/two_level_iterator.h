@@ -20,6 +20,10 @@ struct ReadOptions;
 //
 // Uses a supplied function to convert an index_iter value into
 // an iterator over the contents of the corresponding block.
+// 返回一个two level iterator
+// 里面包含的index_iter是指向一系列的blocks
+// 而每个block又是有一系列的key/value
+// 而two-level key就是一个将所有的key/value串接起来的迭代器
 extern Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
     Iterator* (*block_function)(

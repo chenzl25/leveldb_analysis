@@ -10,12 +10,22 @@
 #include <stdint.h>
 #include "leveldb/slice.h"
 
+/*=====================================
+=            block_builder            =
+=====================================*/
+
+// 用于构造block的帮助类
+
+/*=====  End of block_builder  ======*/
+
+
 namespace leveldb {
 
 struct Options;
 
 class BlockBuilder {
  public:
+  // 根据options来配置构造block时的信息
   explicit BlockBuilder(const Options* options);
 
   // Reset the contents as if the BlockBuilder was just constructed.
@@ -42,9 +52,13 @@ class BlockBuilder {
  private:
   const Options*        options_;
   std::string           buffer_;      // Destination buffer
+  // restarts的点，用vector来存储
   std::vector<uint32_t> restarts_;    // Restart points
+  // 从restart开始到现在key的计数
   int                   counter_;     // Number of entries emitted since restart
+  // Finish是否被call了
   bool                  finished_;    // Has Finish() been called?
+  // block的last_key_
   std::string           last_key_;
 
   // No copying allowed
