@@ -19,7 +19,7 @@ struct ReadOptions;
 
 // BlockHandle is a pointer to the extent of a file that stores a data
 // block or a meta block.
-// BlickHandle是一个指向外部（存着data block或者meta block）file的一个“指针”
+// BlickHandle是一个指向file的block的一个“指针”
 class BlockHandle {
  public:
   BlockHandle();
