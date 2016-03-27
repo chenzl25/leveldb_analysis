@@ -46,6 +46,7 @@ class Table {
   // for the duration of the returned table's lifetime.
   //
   // *file must remain live while this Table is in use.
+  // 静态方法
   // table的持续存储室在硬盘中的
   // 这个方法可以打开存储在file中的table
   // 如果成功打开返回success的status，同时会把*table置为新开的table
@@ -71,7 +72,7 @@ class Table {
   // bytes, and so includes effects like compression of the underlying data.
   // E.g., the approximate offset of the last key in the table will
   // be close to the file length.
-  // 给定一个key返回这个ley大概在table的offset， //为什么是大概了，现在不大了解，以后补充
+  // 给定一个key返回这个key大概在table的offset， //为什么是大概了，现在不大了解，以后补充
   // 例如： 如果给了最后一个key，那么结果就很接近file的size
   uint64_t ApproximateOffsetOf(const Slice& key) const;
 

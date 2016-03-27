@@ -3,7 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Thread-safe (provides internal synchronization)
-
+// 线程安全的，提供内部的同步机制
 #ifndef STORAGE_LEVELDB_DB_TABLE_CACHE_H_
 #define STORAGE_LEVELDB_DB_TABLE_CACHE_H_
 
@@ -30,6 +30,9 @@ class TableCache {
   // the returned iterator.  The returned "*tableptr" object is owned by
   // the cache and should not be deleted, and is valid for as long as the
   // returned iterator is live.
+  // 返回一个iterator对于一个给定number的file（sstable），如果tableptr != NULL
+  // 则tableptr赋值为Table的指针
+  // 其中file_size一定要等于file的大小
   Iterator* NewIterator(const ReadOptions& options,
                         uint64_t file_number,
                         uint64_t file_size,
@@ -37,6 +40,7 @@ class TableCache {
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value).
+  // 如果在file里找到一个interal key则调用(*handle_result)(arg, found_key, found_value).
   Status Get(const ReadOptions& options,
              uint64_t file_number,
              uint64_t file_size,
@@ -45,6 +49,7 @@ class TableCache {
              void (*handle_result)(void*, const Slice&, const Slice&));
 
   // Evict any entry for the specified file number
+  // 删除cache中所有与file_number相关的entry
   void Evict(uint64_t file_number);
 
  private:
