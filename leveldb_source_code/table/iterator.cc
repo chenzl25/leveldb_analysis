@@ -3,14 +3,15 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/iterator.h"
-
+// 这个文件是对 "leveldb/iterator.h"里面iterator的cleanUp相关的方法的实现
 namespace leveldb {
-
+// 默认构造函数
 Iterator::Iterator() {
   cleanup_.function = NULL;
   cleanup_.next = NULL;
 }
-
+// 析构函数
+// 会调用一系列的cleanUp函数
 Iterator::~Iterator() {
   if (cleanup_.function != NULL) {
     (*cleanup_.function)(cleanup_.arg1, cleanup_.arg2);
@@ -22,7 +23,7 @@ Iterator::~Iterator() {
     }
   }
 }
-
+// 注册Cleanup函数
 void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
   assert(func != NULL);
   Cleanup* c;
@@ -37,7 +38,7 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
   c->arg1 = arg1;
   c->arg2 = arg2;
 }
-
+// EmptyIterator，在NewMergingIterator中 n == 0时候回用到
 namespace {
 class EmptyIterator : public Iterator {
  public:

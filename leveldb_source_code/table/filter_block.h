@@ -54,14 +54,14 @@ class FilterBlockBuilder {
   const FilterPolicy* policy_;
   // 所有keys的串接
   std::string keys_;              // Flattened key contents
-  // 对上面keys_每个key的开始位置
+  // 对上面keys_每个key的开始位置，靠这个来记录key串接后的长度
   std::vector<size_t> start_;     // Starting index in keys_ of each key
   // Filter data计算到现在的结果
   // 还记得吗，bloom filter的CreateFilter函数是不把存放结果的string直接覆盖，而是append的
   // 所以可以多个filters一起生成结果，而只需要记住对应的开始点就好，下面的filter_offsets_就是干这个
   // 具体请看filter_policy.h和bloom.c
   std::string result_;            // Filter data computed so far
-  // policy_->CreateFilter()的第一个参数
+  // policy_->CreateFilter()的一个参数
   std::vector<Slice> tmp_keys_;   // policy_->CreateFilter() argument
   // 记住result_中每个filter的开始点
   std::vector<uint32_t> filter_offsets_;
@@ -81,11 +81,12 @@ class FilterBlockReader {
   const FilterPolicy* policy_;
   // filter data的指针（在block的开始）
   const char* data_;    // Pointer to filter data (at block-start)
-  // filter data可能是分多段的，所以要有offset来区分
+  // 指向offset array的开始的指针，因为实际储存中filter offset后面会有一个记录前面一系列filter_offsets数组的其实位置（相对于result_）
   const char* offset_;  // Pointer to beginning of offset array (at block-end)
-  // 有多少offset_，相当于数组长度
+  // 有多少offset_，相当于数组长度，
   size_t num_;          // Number of entries in offset array
   // 编码的参数（详情请看filter_block.cc的kFilterBaseLg）
+  // 用来计算kFilterBase = 1 << kFilterBaseLg;的
   size_t base_lg_;      // Encoding parameter (see kFilterBaseLg in .cc file)
 };
 

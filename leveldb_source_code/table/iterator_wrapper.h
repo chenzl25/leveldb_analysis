@@ -29,6 +29,7 @@ class IteratorWrapper {
 
   // Takes ownership of "iter" and will delete it when destroyed, or
   // when Set() is invoked again.
+  // 设置一个iterator，当这个IteratorWrapper要销毁的时候会顺便delete掉内部的iterator  
   void Set(Iterator* iter) {
     delete iter_;
     iter_ = iter;

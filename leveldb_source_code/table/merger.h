@@ -19,6 +19,7 @@ class Iterator;
 //
 // REQUIRES: n >= 0
 // 合并Iterator的一个方法
+// 当MergingIterator销毁的时候会顺带销毁子iterator
 // 同时不会duplicate suppression(看上面英文)
 extern Iterator* NewMergingIterator(
     const Comparator* comparator, Iterator** children, int n);

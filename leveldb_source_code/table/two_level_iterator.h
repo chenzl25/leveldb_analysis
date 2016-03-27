@@ -24,6 +24,7 @@ struct ReadOptions;
 // 里面包含的index_iter是指向一系列的blocks
 // 而每个block又是有一系列的key/value
 // 而two-level key就是一个将所有的key/value串接起来的迭代器
+// 其中block_function是用来将一个index_iter value转化成一个可以迭代block的迭代器
 extern Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
     Iterator* (*block_function)(

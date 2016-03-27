@@ -72,7 +72,7 @@ class TwoLevelIterator: public Iterator {
   // "index_value" passed to block_function_ to create the data_iter_.
   std::string data_block_handle_;
 };
-
+// 构造函数
 TwoLevelIterator::TwoLevelIterator(
     Iterator* index_iter,
     BlockFunction block_function,
@@ -87,7 +87,9 @@ TwoLevelIterator::TwoLevelIterator(
 
 TwoLevelIterator::~TwoLevelIterator() {
 }
-
+// 传说中的二段跳！666
+// index_iter_是根据block index，最后的lastkey来判断block的位置的
+// 所以index_iter_和data_iter_都可以用target来跳
 void TwoLevelIterator::Seek(const Slice& target) {
   index_iter_.Seek(target);
   InitDataBlock();
@@ -112,16 +114,20 @@ void TwoLevelIterator::SeekToLast() {
 void TwoLevelIterator::Next() {
   assert(Valid());
   data_iter_.Next();
+  // 如果data_iter_.Next();无效了就跳到下一个block
+  // SkipEmptyDataBlocksForward函数里会根据index_iter_.Next来跳转
   SkipEmptyDataBlocksForward();
 }
 
 void TwoLevelIterator::Prev() {
   assert(Valid());
   data_iter_.Prev();
+  // 如果data_iter_.Prev();无效了就跳到下一个block
+  // SkipEmptyDataBlocksForward函数里会根据index_iter_.Prev来跳转
   SkipEmptyDataBlocksBackward();
 }
 
-
+// 向前跳过空的block
 void TwoLevelIterator::SkipEmptyDataBlocksForward() {
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) {
     // Move to next block
@@ -134,7 +140,7 @@ void TwoLevelIterator::SkipEmptyDataBlocksForward() {
     if (data_iter_.iter() != NULL) data_iter_.SeekToFirst();
   }
 }
-
+// 向后跳过空的block
 void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
   while (data_iter_.iter() == NULL || !data_iter_.Valid()) {
     // Move to next block
@@ -147,21 +153,23 @@ void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
     if (data_iter_.iter() != NULL) data_iter_.SeekToLast();
   }
 }
-
+// 设置data_iter_，如果data_iter_.status有出错则会记录下来
 void TwoLevelIterator::SetDataIterator(Iterator* data_iter) {
   if (data_iter_.iter() != NULL) SaveError(data_iter_.status());
   data_iter_.Set(data_iter);
 }
-
+// 根据index_iter_当前的value来构造data_iter
 void TwoLevelIterator::InitDataBlock() {
   if (!index_iter_.Valid()) {
     SetDataIterator(NULL);
   } else {
     Slice handle = index_iter_.value();
+    // 看看dataiter是否构造好了 
     if (data_iter_.iter() != NULL && handle.compare(data_block_handle_) == 0) {
       // data_iter_ is already constructed with this iterator, so
       // no need to change anything
     } else {
+      // 还没构造就使用提供的函数来构造，顺便记录handle到data_block_handle_
       Iterator* iter = (*block_function_)(arg_, options_, handle);
       data_block_handle_.assign(handle.data(), handle.size());
       SetDataIterator(iter);
@@ -170,7 +178,7 @@ void TwoLevelIterator::InitDataBlock() {
 }
 
 }  // namespace
-
+// 工厂函数
 Iterator* NewTwoLevelIterator(
     Iterator* index_iter,
     BlockFunction block_function,

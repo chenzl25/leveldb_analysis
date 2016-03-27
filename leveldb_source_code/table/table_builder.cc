@@ -39,7 +39,9 @@ struct TableBuilder::Rep {
   // blocks.
   //
   // Invariant: r->pending_index_entry is true only if data_block is empty.
+  // 当data_block为空时pending_index_entry就为true，否则false
   bool pending_index_entry;
+  // 有来加入到index block的block handle
   BlockHandle pending_handle;  // Handle to add to index block
 
   std::string compressed_output;
@@ -59,20 +61,21 @@ struct TableBuilder::Rep {
     index_block_options.block_restart_interval = 1;
   }
 };
-
+// TableBuilder的构建，接收一个options 和 一个sstable的file
 TableBuilder::TableBuilder(const Options& options, WritableFile* file)
     : rep_(new Rep(options, file)) {
+  // 看有没有fileter_policy来决定是否进行filterBlock的构造
   if (rep_->filter_block != NULL) {
     rep_->filter_block->StartBlock(0);
   }
 }
-
+// TableBuilder的析构函数
 TableBuilder::~TableBuilder() {
   assert(rep_->closed);  // Catch errors where caller forgot to call Finish()
   delete rep_->filter_block;
   delete rep_;
 }
-
+// 中途改变options，但不允许改变comparator
 Status TableBuilder::ChangeOptions(const Options& options) {
   // Note: if more fields are added to Options, update
   // this function to catch changes that should not be allowed to
@@ -88,50 +91,60 @@ Status TableBuilder::ChangeOptions(const Options& options) {
   rep_->index_block_options.block_restart_interval = 1;
   return Status::OK();
 }
-
+// 加入一个key/value
 void TableBuilder::Add(const Slice& key, const Slice& value) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
+  // 保证后面加入的key要大于前面的key
   if (r->num_entries > 0) {
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
 
   if (r->pending_index_entry) {
     assert(r->data_block.empty());
+    // 找到两个block之间值最短的那个key
     r->options.comparator->FindShortestSeparator(&r->last_key, key);
     std::string handle_encoding;
+    // 把handle编码到handle_encoding，其中包含了block的offset和size
     r->pending_handle.EncodeTo(&handle_encoding);
+    // 按key/value的来存到index_block中
     r->index_block.Add(r->last_key, Slice(handle_encoding));
     r->pending_index_entry = false;
   }
-
+  // filter_block也要加入一个key
   if (r->filter_block != NULL) {
     r->filter_block->AddKey(key);
   }
-
+  // 最后记录到last_key
   r->last_key.assign(key.data(), key.size());
+  // table总共entry的数目+1
   r->num_entries++;
+  // 放到data_block中
   r->data_block.Add(key, value);
-
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
+  // 如果block的大小超过option的定义大小就Flush
   if (estimated_block_size >= r->options.block_size) {
     Flush();
   }
 }
-
+// 到当前的block数据Flush到OS
 void TableBuilder::Flush() {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
   if (r->data_block.empty()) return;
   assert(!r->pending_index_entry);
+  // 写到文件
   WriteBlock(&r->data_block, &r->pending_handle);
   if (ok()) {
     r->pending_index_entry = true;
+    // sstable文件flush到OS
     r->status = r->file->Flush();
   }
   if (r->filter_block != NULL) {
+    // 通知filter_block开始记录新的block的filter
+    // 这里会把filter_block写入
     r->filter_block->StartBlock(r->offset);
   }
 }
@@ -143,6 +156,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   //    crc: uint32
   assert(ok());
   Rep* r = rep_;
+  // 让block Finish
   Slice raw = block->Finish();
 
   Slice block_contents;
@@ -155,6 +169,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
 
     case kSnappyCompression: {
       std::string* compressed = &r->compressed_output;
+      // 看需不需要压缩block
       if (port::Snappy_Compress(raw.data(), raw.size(), compressed) &&
           compressed->size() < raw.size() - (raw.size() / 8u)) {
         block_contents = *compressed;
@@ -167,8 +182,10 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
       break;
     }
   }
+  // 最后把block写到FILE里
   WriteRawBlock(block_contents, type, handle);
   r->compressed_output.clear();
+  // blockBuilder的Reset函数
   block->Reset();
 }
 
@@ -176,9 +193,14 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
                                  CompressionType type,
                                  BlockHandle* handle) {
   Rep* r = rep_;
+  // 记录block的offset到handle中
   handle->set_offset(r->offset);
   handle->set_size(block_contents.size());
+  // 把block的正文append到FILE里
   r->status = r->file->Append(block_contents);
+  // 再追加block trailer
+  // 其中trailer是type+crc
+  // crc是正文+type的校验和
   if (r->status.ok()) {
     char trailer[kBlockTrailerSize];
     trailer[0] = type;
@@ -187,6 +209,7 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
     EncodeFixed32(trailer+1, crc32c::Mask(crc));
     r->status = r->file->Append(Slice(trailer, kBlockTrailerSize));
     if (r->status.ok()) {
+      // r->offset要改变
       r->offset += block_contents.size() + kBlockTrailerSize;
     }
   }
@@ -195,9 +218,10 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
 Status TableBuilder::status() const {
   return rep_->status;
 }
-
+// sstable的建立完成
 Status TableBuilder::Finish() {
   Rep* r = rep_;
+  // 先确保所用东西都Flush出去
   Flush();
   assert(!r->closed);
   r->closed = true;
@@ -205,12 +229,18 @@ Status TableBuilder::Finish() {
   BlockHandle filter_block_handle, metaindex_block_handle, index_block_handle;
 
   // Write filter block
+  // 这里也就是metadata了
+  // 因为在Flush函数中已经完成了对data_block的写入
+  // 接下来就是filter block的写入了
   if (ok() && r->filter_block != NULL) {
+    // 同样是调用WriteRawBlock，filter_block不再压缩，毕竟都是最压缩的了
+    // 记录filter_block的handle，它的offset是filter_block_的开始位置，相对于file
     WriteRawBlock(r->filter_block->Finish(), kNoCompression,
                   &filter_block_handle);
   }
 
   // Write metaindex block
+  // 写meta indexblock，如果filter_block有的话呢就加入
   if (ok()) {
     BlockBuilder meta_index_block(&r->options);
     if (r->filter_block != NULL) {
@@ -227,6 +257,7 @@ Status TableBuilder::Finish() {
   }
 
   // Write index block
+  // 写index block
   if (ok()) {
     if (r->pending_index_entry) {
       r->options.comparator->FindShortSuccessor(&r->last_key);
@@ -239,6 +270,9 @@ Status TableBuilder::Finish() {
   }
 
   // Write footer
+  // 最后集合metaindex_block_handle
+  // index_block_handle
+  // 通过Footer来追加到最后Filr
   if (ok()) {
     Footer footer;
     footer.set_metaindex_handle(metaindex_block_handle);
@@ -250,6 +284,7 @@ Status TableBuilder::Finish() {
       r->offset += footer_encoding.size();
     }
   }
+  // sstable的建立完成
   return r->status;
 }
 

@@ -8,11 +8,22 @@
 #include "leveldb/iterator.h"
 #include "table/iterator_wrapper.h"
 
+/*=======================================
+=            MergingIterator            =
+=======================================*/
+
+// 用来实现多个iterator合并的iterator
+
+/*=====  End of MergingIterator  ======*/
+
+
+
 namespace leveldb {
 
 namespace {
 class MergingIterator : public Iterator {
  public:
+  // 构造函数，里面用了IteratorWrapper来构造
   MergingIterator(const Comparator* comparator, Iterator** children, int n)
       : comparator_(comparator),
         children_(new IteratorWrapper[n]),
@@ -23,7 +34,7 @@ class MergingIterator : public Iterator {
       children_[i].Set(children[i]);
     }
   }
-
+  // 删除掉所有的iteratorWrapper，从而删除iterator
   virtual ~MergingIterator() {
     delete[] children_;
   }
@@ -31,7 +42,7 @@ class MergingIterator : public Iterator {
   virtual bool Valid() const {
     return (current_ != NULL);
   }
-
+  // 跳到所有iterator中最小的那个key
   virtual void SeekToFirst() {
     for (int i = 0; i < n_; i++) {
       children_[i].SeekToFirst();
@@ -39,7 +50,7 @@ class MergingIterator : public Iterator {
     FindSmallest();
     direction_ = kForward;
   }
-
+  // 跳到所有iterator中最大的那个key
   virtual void SeekToLast() {
     for (int i = 0; i < n_; i++) {
       children_[i].SeekToLast();
@@ -47,7 +58,7 @@ class MergingIterator : public Iterator {
     FindLargest();
     direction_ = kReverse;
   }
-
+  // 跳到最先>=当前键的那个key
   virtual void Seek(const Slice& target) {
     for (int i = 0; i < n_; i++) {
       children_[i].Seek(target);
@@ -64,6 +75,21 @@ class MergingIterator : public Iterator {
     // true for all of the non-current_ children since current_ is
     // the smallest child and key() == current_->key().  Otherwise,
     // we explicitly position the non-current_ children.
+    // 跟之前的方向有关如果是kForward的状态下next的话好办，如果不是就要重新解决
+    // 因为，例如： 3个iterator
+    // 1， 4， 7， 11
+    // 2， 5， 8， 12
+    // 3， 6， 9， 13
+    // 假设现在各iterator在4， 5， 6
+    // 如果是kForward的话，肯定current_是在4的
+    // 如果是kReverse的话，肯定current_是在6的
+    // 假如现在current_是6的那种kReverse情况
+    // 我们要找到的下一位是7
+    // 就需要把4， 5弄到比6大，再找最小值
+    // ps：注意到我们有遇到相同就跳过的机制
+    // 假如上面的5改成6我们就会略过那个6了
+    // 所以6就只会出现一次
+    // Prev也是同理的
     if (direction_ != kForward) {
       for (int i = 0; i < n_; i++) {
         IteratorWrapper* child = &children_[i];
@@ -77,7 +103,8 @@ class MergingIterator : public Iterator {
       }
       direction_ = kForward;
     }
-
+    // 如果是kForward的话呢，就可以让current_用next
+    // 之后再选择最小的
     current_->Next();
     FindSmallest();
   }
@@ -106,7 +133,8 @@ class MergingIterator : public Iterator {
       }
       direction_ = kReverse;
     }
-
+    // 如果是kReverse的话呢，就可以让current_用next
+    // 之后再选择最大的
     current_->Prev();
     FindLargest();
   }
@@ -120,7 +148,7 @@ class MergingIterator : public Iterator {
     assert(Valid());
     return current_->value();
   }
-
+  // 其中一个iterator有错就返回那个status
   virtual Status status() const {
     Status status;
     for (int i = 0; i < n_; i++) {
@@ -139,6 +167,7 @@ class MergingIterator : public Iterator {
   // We might want to use a heap in case there are lots of children.
   // For now we use a simple array since we expect a very small number
   // of children in leveldb.
+  // 这里应该用一个heap来存所有的IteratorWrapper，但是数量少的话我们就勉强用个数组来实现
   const Comparator* comparator_;
   IteratorWrapper* children_;
   int n_;
@@ -151,7 +180,7 @@ class MergingIterator : public Iterator {
   };
   Direction direction_;
 };
-
+// 找出在n个iterator当前key中最小的那个，设置为current_
 void MergingIterator::FindSmallest() {
   IteratorWrapper* smallest = NULL;
   for (int i = 0; i < n_; i++) {
@@ -166,7 +195,7 @@ void MergingIterator::FindSmallest() {
   }
   current_ = smallest;
 }
-
+// 找出在n个iterator当前key中最大的那个，设置为current_
 void MergingIterator::FindLargest() {
   IteratorWrapper* largest = NULL;
   for (int i = n_-1; i >= 0; i--) {
@@ -182,7 +211,10 @@ void MergingIterator::FindLargest() {
   current_ = largest;
 }
 }  // namespace
-
+// 工厂函数
+// n == 0 的时候返回NewEmptyIterator，原来是用在这里
+// n == 1 的时候就返回当前的iterator
+// n >= 2 的时候就返回MergingIterator
 Iterator* NewMergingIterator(const Comparator* cmp, Iterator** list, int n) {
   assert(n >= 0);
   if (n == 0) {
