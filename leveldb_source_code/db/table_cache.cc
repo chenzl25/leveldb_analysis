@@ -57,7 +57,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
     std::string fname = TableFileName(dbname_, file_number);
     RandomAccessFile* file = NULL;
     Table* table = NULL;
-    // 构造NewRandomAccessFile来读取table的file
+    // 构造NewRandomAccessFile来读取file文件
     s = env_->NewRandomAccessFile(fname, &file);
     if (!s.ok()) {
       std::string old_fname = SSTTableFileName(dbname_, file_number);
@@ -66,7 +66,7 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
       }
     }
     if (s.ok()) {
-      // 打开file到table
+      // 根据file来构造table
       s = Table::Open(*options_, file, file_size, &table);
     }
 
@@ -82,6 +82,8 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
       tf->table = table;
       // 1代表charge等于1，占用空间为1，这里指缓存指针
       // 实体会在注册的DeleteEntry中删除
+      // 这里注册的是cache中引用为0的时候所调用的函数DeleteEntry
+      // 根据TableAndFile指针删除相关的table和file
       *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
     }
   }
@@ -107,6 +109,8 @@ Iterator* TableCache::NewIterator(const ReadOptions& options,
   // 获得table的iterator
   Iterator* result = table->NewIterator(options);
   // 注册iterator销毁时的Cleanup函数
+  // 这里因为可能会对一个table生成多个iterator所以注册的时候用的是UnrefEntry
+  // 每当一个iterator被销毁的时候就进行cache中的减引用
   result->RegisterCleanup(&UnrefEntry, cache_, handle);
   // 如果tableptr非空，这令其指向获得的table
   if (tableptr != NULL) {

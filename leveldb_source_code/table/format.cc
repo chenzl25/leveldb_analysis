@@ -75,7 +75,15 @@ Status Footer::DecodeFrom(Slice* input) {
   }
   return result;
 }
-
+// table.cc中会用到该方法
+// 利用提供的block_handle来读取在file中对应的block
+// 会对读出来的block判断是否需要解压，校验
+// 还有给出是否可以缓存，因为block读出来的时候时候通过RandomAccessFile的
+// 而我们会传进一个buffer给RandomAccessFile来存放读出来的block
+// 如果不相同的时候就会认为RandomAccessFile没用到我们的buffer
+// 所以就不能缓存，因为我们不知道什么时候回失效（也就是所谓的double buffer）
+// 这里的block的大小不一定都一样（可能提前用了Finish函数）
+// 但是确保会在一次的IO中就能读取尽量多的数据，所以用block来做单位
 Status ReadBlock(RandomAccessFile* file,
                  const ReadOptions& options,
                  const BlockHandle& handle,

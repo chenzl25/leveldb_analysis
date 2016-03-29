@@ -28,6 +28,7 @@ class TableCache;
 // Talbe是一个有序的map<string,  string>
 // 同时是不可修改的
 // 多线程访问是安全的，如果在没有external synchronization的时候是
+// 这里对table的访问也是通过iterator来实现的
 
 /*=====  End of Table  ======*/
 
@@ -81,7 +82,9 @@ class Table {
   Rep* rep_;
   // 注意table的构造函数是私有的，table只能通过静态方法打开
   explicit Table(Rep* rep) { rep_ = rep; }
-  // BlockReader在相关文件再介绍
+
+  // 转换一个index iterator的value到一个可以访问block内容的iterator
+  // 用在two-level-iterator中的
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
 
   // Calls (*handle_result)(arg, ...) with the entry found after a call
@@ -89,8 +92,10 @@ class Table {
   // that key is not present.
   // TableCache是友元
   friend class TableCache;
-  // 现在不大了解，以后补充
   // handle_result函数在entry找到后调用，但是filter 说不在的时候就不会调用
+  // 这个函数会在table_cache中使用
+  // 用来找table中某一个key的方法，找到了就调用其中的handle_result方法
+  // 这里是抽象了的一层，因为里面可能会用到filter_policy和其他通过block来找key的手段
   Status InternalGet(
       const ReadOptions&, const Slice& key,
       void* arg,

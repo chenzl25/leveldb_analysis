@@ -249,10 +249,12 @@ Status TableBuilder::Finish() {
       key.append(r->options.filter_policy->Name());
       std::string handle_encoding;
       filter_block_handle.EncodeTo(&handle_encoding);
+      // 这个meta_index_block也就只有一个key在，就是"filter."+filter_policy->Name()
       meta_index_block.Add(key, handle_encoding);
     }
 
     // TODO(postrelease): Add stats and other meta blocks
+    // 将meta_index_block写入file，并获得metaindex_block_handle用于footer的构建
     WriteBlock(&meta_index_block, &metaindex_block_handle);
   }
 
@@ -266,13 +268,14 @@ Status TableBuilder::Finish() {
       r->index_block.Add(r->last_key, Slice(handle_encoding));
       r->pending_index_entry = false;
     }
+    // 将index_block写入file，并获得index_block_handle用于footer的构建
     WriteBlock(&r->index_block, &index_block_handle);
   }
 
   // Write footer
   // 最后集合metaindex_block_handle
   // index_block_handle
-  // 通过Footer来追加到最后Filr
+  // 通过Footer来追加到最后File
   if (ok()) {
     Footer footer;
     footer.set_metaindex_handle(metaindex_block_handle);

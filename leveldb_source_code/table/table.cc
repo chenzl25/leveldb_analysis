@@ -40,6 +40,8 @@ struct Table::Rep {
 };
 // 打开file到table中
 // size要等于file的大小
+// 用RandomAccessFile来读取，这样就可以随机地读到sstable中的各个结构
+// open中会读取footer，meta，filter缓存起来
 Status Table::Open(const Options& options,
                    RandomAccessFile* file,
                    uint64_t size,
@@ -191,6 +193,8 @@ static void ReleaseBlock(void* arg, void* h) {
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
 // 转换一个index iterator的value到一个可以访问block内容的iterator
+// 因为对table的访问是通过two-level-iterator来实现的，所以要提供这个函数
+// 
 Iterator* Table::BlockReader(void* arg,
                              const ReadOptions& options,
                              const Slice& index_value) {
@@ -265,10 +269,16 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
       rep_->index_block->NewIterator(rep_->options.comparator),
       &Table::BlockReader, const_cast<Table*>(this), options);
 }
-// 根据key来获取对应的key/value来调用saver
+
+// 获取table中的某一个key来，如果找到就进行saver函数（key，value）调用
+// 其中有用filter来进行是否在file中，来避免不必要的IO
+// 当然如果用户实现了自己的block缓存也会有更好的效果
+
 Status Table::InternalGet(const ReadOptions& options, const Slice& k,
                           void* arg,
                           void (*saver)(void*, const Slice&, const Slice&)) {
+  // 这个方法也用到了BlockReader（转index_iter value到block_iter）方法来实现对key的查找
+  // 自己构造index_iterator再跳到对应的block，再到key/value
   Status s;
   Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
   // index_iter是可以Seek block的 key的
