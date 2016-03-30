@@ -591,9 +591,12 @@ std::string Version::DebugString() const {
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
 // Versions that contain full copies of the intermediate state.
+// 将VersionEdit应用到Version上的过程封装成VersionSet::Builder
+// 主要是更新Version::files[]
 class VersionSet::Builder {
  private:
   // Helper to sort by v->files_[file_number].smallest
+  // 定义了用于排序FileMetaData的比较方法
   struct BySmallestKey {
     const InternalKeyComparator* internal_comparator;
 
@@ -607,15 +610,18 @@ class VersionSet::Builder {
       }
     }
   };
-
+  // 排序的sstable（FileMetaData）的集合
   typedef std::set<FileMetaData*, BySmallestKey> FileSet;
+  // 要添加和删除的sstable集合
   struct LevelState {
     std::set<uint64_t> deleted_files;
     FileSet* added_files;
   };
-
+  // 要更新的VersionSet
   VersionSet* vset_;
+  // 基准的Version，compact后，将current_传入作为base
   Version* base_;
+  // 各个level上要更新的文件集合
   LevelState levels_[config::kNumLevels];
 
  public:

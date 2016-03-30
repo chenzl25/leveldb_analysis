@@ -44,7 +44,7 @@ class Env;
 enum FileType {
   kLogFile,
   kDBLockFile,
-  kTableFile,
+  kTableFile, 
   kDescriptorFile,
   kCurrentFile,
   kTempFile,
@@ -62,11 +62,13 @@ extern std::string LogFileName(const std::string& dbname, uint64_t number);
 // Return the name of the sstable with the specified number
 // in the db named by "dbname".  The result will be prefixed with
 // "dbname".
+// 这里是sstable的新版的name，后缀ldb
 extern std::string TableFileName(const std::string& dbname, uint64_t number);
 
 // Return the legacy file name for an sstable with the specified number
 // in the db named by "dbname". The result will be prefixed with
 // "dbname".
+// 这里是sstable的旧版的name，后缀sst
 extern std::string SSTTableFileName(const std::string& dbname, uint64_t number);
 
 // Return the name of the descriptor file for the db named by

@@ -14,7 +14,7 @@
 //    data: uint8[len]
 // WriteBatch::rep_的格式就在上面了，清晰
 // 先是一个8bytes的sequence，再是一个4bytes的count
-// 后面是cpunt个data
+// 后面是count个data
 // data是插入一个key/value或者是delete 一个key
 // 其中key 和 value 都是 变长length-prefix的
 // ps：rep_是std::string

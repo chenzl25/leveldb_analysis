@@ -43,11 +43,14 @@ class DBIter: public Iterator {
   //     the exact entry that yields this->key(), this->value()
   // (2) When moving backwards, the internal iterator is positioned
   //     just before all entries whose user key == this->key().
+  // 这里有两个方向kForward和kReverse
+  // (1) 如果是kForward，那么internal iterator刚好指向那个user-key的entry
+  // (2) 如果是kReverse，那么internal iterator指向那个user-key的entry的前一个
   enum Direction {
     kForward,
     kReverse
   };
-
+  // DBIter的构造函数
   DBIter(DBImpl* db, const Comparator* cmp, Iterator* iter, SequenceNumber s,
          uint32_t seed)
       : db_(db),
@@ -59,18 +62,24 @@ class DBIter: public Iterator {
         rnd_(seed),
         bytes_counter_(RandomPeriod()) {
   }
+  // 析构函数
   virtual ~DBIter() {
     delete iter_;
   }
+  // 返回是否valid
   virtual bool Valid() const { return valid_; }
+  // 返回key，根据方向，实现内部的internal iter指向有所不同
+  // 还有要ExtractUserKey提取出来
   virtual Slice key() const {
     assert(valid_);
     return (direction_ == kForward) ? ExtractUserKey(iter_->key()) : saved_key_;
   }
+  // 返回value，根据方向，实现内部的internal iter指向有所不同
   virtual Slice value() const {
     assert(valid_);
     return (direction_ == kForward) ? iter_->value() : saved_value_;
   }
+  // 返回状态
   virtual Status status() const {
     if (status_.ok()) {
       return iter_->status();
@@ -89,7 +98,7 @@ class DBIter: public Iterator {
   void FindNextUserEntry(bool skipping, std::string* skip);
   void FindPrevUserEntry();
   bool ParseKey(ParsedInternalKey* key);
-
+  // 把key存在dst中
   inline void SaveKey(const Slice& k, std::string* dst) {
     dst->assign(k.data(), k.size());
   }
@@ -107,16 +116,27 @@ class DBIter: public Iterator {
   ssize_t RandomPeriod() {
     return rnd_.Uniform(2*config::kReadBytesPeriod);
   }
-
+  // db数据路径
   DBImpl* db_;
+  // user-key的比较器
   const Comparator* const user_comparator_;
+  // 指向MergingIterator的指针
   Iterator* const iter_;
+  // 通过sequence_来控制遍历数据的时间点
+  // 如果指定了SnapShot则赋值为Snapshot::sequenceNumber
+  // 这样就能只遍历之前的数据了
+  // 否则，赋值为VersionSet::last_sequence_就可以遍历出所有的数据了
   SequenceNumber const sequence_;
-
+  // 遍历过程中的data
   Status status_;
+  // 当方向为kReverse时用来返回的key和value值
+  // 这里为了在kReverse的时候可以处理相同的key和删除的key的逻辑，所采取的做法
+  // 如果方向为kForward是则直接用iter的指向的就entry就可以了
   std::string saved_key_;     // == current key when direction_==kReverse
   std::string saved_value_;   // == current raw value when direction_==kReverse
+  // 方向
   Direction direction_;
+  // 是否有效
   bool valid_;
 
   Random rnd_;
