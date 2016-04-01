@@ -11,6 +11,7 @@ namespace leveldb {
 
 // Tag numbers for serialized VersionEdit.  These numbers are written to
 // disk and should not be changed.
+// 这些枚举类型的值是用来序列化VersionEdit到硬盘上的，所以不要修改
 enum Tag {
   kComparator           = 1,
   kLogNumber            = 2,
@@ -22,7 +23,7 @@ enum Tag {
   // 8 was used for large value refs
   kPrevLogNumber        = 9
 };
-
+// 清楚VersionEdit
 void VersionEdit::Clear() {
   comparator_.clear();
   log_number_ = 0;
@@ -37,7 +38,8 @@ void VersionEdit::Clear() {
   deleted_files_.clear();
   new_files_.clear();
 }
-
+// 把VersionEdit的内容encode到dst中
+// 每一项都是先是类型后是数据这样存储
 void VersionEdit::EncodeTo(std::string* dst) const {
   if (has_comparator_) {
     PutVarint32(dst, kComparator);
@@ -84,7 +86,7 @@ void VersionEdit::EncodeTo(std::string* dst) const {
     PutLengthPrefixedSlice(dst, f.largest.Encode());
   }
 }
-
+// decode时所用到的函数，从input中获取InternalKey
 static bool GetInternalKey(Slice* input, InternalKey* dst) {
   Slice str;
   if (GetLengthPrefixedSlice(input, &str)) {
@@ -94,7 +96,7 @@ static bool GetInternalKey(Slice* input, InternalKey* dst) {
     return false;
   }
 }
-
+// decode时所用到的函数，从input中获取level
 static bool GetLevel(Slice* input, int* level) {
   uint32_t v;
   if (GetVarint32(input, &v) &&
@@ -105,7 +107,7 @@ static bool GetLevel(Slice* input, int* level) {
     return false;
   }
 }
-
+// 从src中编码出VersionEdit的信息出来
 Status VersionEdit::DecodeFrom(const Slice& src) {
   Clear();
   Slice input = src;
@@ -208,7 +210,7 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
   }
   return result;
 }
-
+//VersionEdit用来打印出来debug所用的信息，写得为了让人更好看
 std::string VersionEdit::DebugString() const {
   std::string r;
   r.append("VersionEdit {");

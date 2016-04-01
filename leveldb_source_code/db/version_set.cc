@@ -19,18 +19,21 @@
 #include "util/logging.h"
 
 namespace leveldb {
-
+// sstable文件的大小
 static const int kTargetFileSize = 2 * 1048576;
 
 // Maximum bytes of overlaps in grandparent (i.e., level+2) before we
 // stop building a single file in a level->level+1 compaction.
+// compact过程中最大可容忍的(level-n和level-n+2)overlap的bytes
 static const int64_t kMaxGrandParentOverlapBytes = 10 * kTargetFileSize;
 
 // Maximum number of bytes in all compacted files.  We avoid expanding
 // the lower level file set of a compaction if it would make the
 // total compaction cover more than this many bytes.
+// 暂时还不知道这个用处，以后补充
 static const int64_t kExpandedCompactionByteSizeLimit = 25 * kTargetFileSize;
-
+// 这里是计算出每一层level的最大占用的bytes
+// 其中不包括level-0，level-0是用file的数量来限定的（因为它是memtable dump下来的，大小可能不固定）
 static double MaxBytesForLevel(int level) {
   // Note: the result for level zero is not really used since we set
   // the level-0 compaction threshold based on number of files.
@@ -41,11 +44,11 @@ static double MaxBytesForLevel(int level) {
   }
   return result;
 }
-
+// 每层的file的最大size的大小，现在都是一样的，以后可以修改
 static uint64_t MaxFileSizeForLevel(int level) {
   return kTargetFileSize;  // We could vary per level to reduce number of files?
 }
-
+// 给定一个FileMetaData的vector，计算总共的大小
 static int64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   int64_t sum = 0;
   for (size_t i = 0; i < files.size(); i++) {
@@ -53,8 +56,9 @@ static int64_t TotalFileSize(const std::vector<FileMetaData*>& files) {
   }
   return sum;
 }
-
+// Version的析构函数
 Version::~Version() {
+  // 析构的时候肯定是要保证引用refs = 0的
   assert(refs_ == 0);
 
   // Remove from linked list
@@ -62,6 +66,7 @@ Version::~Version() {
   next_->prev_ = prev_;
 
   // Drop references to files
+  // 当前的Version要被析构的时候会对其所引用到的sstable元信息进行解引用，当引用<=0是delete
   for (int level = 0; level < config::kNumLevels; level++) {
     for (size_t i = 0; i < files_[level].size(); i++) {
       FileMetaData* f = files_[level][i];
@@ -73,7 +78,8 @@ Version::~Version() {
     }
   }
 }
-
+// 给定一组files，一个InternalKeyComparator，一个key
+// 用二分查找来找距离key最近的file
 int FindFile(const InternalKeyComparator& icmp,
              const std::vector<FileMetaData*>& files,
              const Slice& key) {
@@ -94,21 +100,27 @@ int FindFile(const InternalKeyComparator& icmp,
   }
   return right;
 }
-
+// 判断一个userkey是否在给定的file后面
+// 用的是userKey-comparator
+// 当user_key是NULL时表示最小
 static bool AfterFile(const Comparator* ucmp,
                       const Slice* user_key, const FileMetaData* f) {
   // NULL user_key occurs before all keys and is therefore never after *f
   return (user_key != NULL &&
           ucmp->Compare(*user_key, f->largest.user_key()) > 0);
 }
-
+// 判断一个userkey是否在给定的file前面
+// 用的是userKey-comparator
+// 当user_key是NULL时表示最大
 static bool BeforeFile(const Comparator* ucmp,
                        const Slice* user_key, const FileMetaData* f) {
   // NULL user_key occurs after all keys and is therefore never before *f
   return (user_key != NULL &&
           ucmp->Compare(*user_key, f->smallest.user_key()) < 0);
 }
-
+// 给定一组files，一个range，一个InternalKeyComparator
+// 还有判定是否互不重叠的disjoint_sorted_files
+// 返回是否给定的range与files有重叠
 bool SomeFileOverlapsRange(
     const InternalKeyComparator& icmp,
     bool disjoint_sorted_files,
@@ -118,6 +130,7 @@ bool SomeFileOverlapsRange(
   const Comparator* ucmp = icmp.user_comparator();
   if (!disjoint_sorted_files) {
     // Need to check against all files
+    // 线性逐一比较
     for (size_t i = 0; i < files.size(); i++) {
       const FileMetaData* f = files[i];
       if (AfterFile(ucmp, smallest_user_key, f) ||
@@ -131,6 +144,7 @@ bool SomeFileOverlapsRange(
   }
 
   // Binary search over file list
+  // 用FindFile来完成，FindFile是二分查找找到距离key最近的file
   uint32_t index = 0;
   if (smallest_user_key != NULL) {
     // Find the earliest possible internal key for smallest_user_key
@@ -151,6 +165,9 @@ bool SomeFileOverlapsRange(
 // is the largest key that occurs in the file, and value() is an
 // 16-byte value containing the file number and file size, both
 // encoded using EncodeFixed64.
+// 内部的迭代器，用来迭代给定(version)level的files，
+// 其中key返回当前file中的最大的key
+// value返回一个16byte的数字，其中包括了file的FileNumber和size，它们均是EncodeFixed64
 class Version::LevelFileNumIterator : public Iterator {
  public:
   LevelFileNumIterator(const InternalKeyComparator& icmp,
@@ -162,17 +179,22 @@ class Version::LevelFileNumIterator : public Iterator {
   virtual bool Valid() const {
     return index_ < flist_->size();
   }
+  // seek用FindFile来实现
   virtual void Seek(const Slice& target) {
     index_ = FindFile(icmp_, *flist_, target);
   }
+  // SeekToFirst则指向第一个
   virtual void SeekToFirst() { index_ = 0; }
+  // SeekToLast就是最后一个
   virtual void SeekToLast() {
     index_ = flist_->empty() ? 0 : flist_->size() - 1;
   }
+  // 下一个
   virtual void Next() {
     assert(Valid());
     index_++;
   }
+  // Prev，当index_==0是如果还想向前就会index_ = flist_->size(); 使得Valid返回false
   virtual void Prev() {
     assert(Valid());
     if (index_ == 0) {
@@ -181,10 +203,12 @@ class Version::LevelFileNumIterator : public Iterator {
       index_--;
     }
   }
+  // 当前file的最大键的encode
   Slice key() const {
     assert(Valid());
     return (*flist_)[index_]->largest.Encode();
   }
+  // fileNumber和size的encode
   Slice value() const {
     assert(Valid());
     EncodeFixed64(value_buf_, (*flist_)[index_]->number);
@@ -195,12 +219,16 @@ class Version::LevelFileNumIterator : public Iterator {
  private:
   const InternalKeyComparator icmp_;
   const std::vector<FileMetaData*>* const flist_;
+  // 存放当前iter所指向file在flist的index
   uint32_t index_;
 
   // Backing store for value().  Holds the file number and size.
+  // mutable的用法，使得value()这个被const修饰的方法可以修改value_buf_变量
   mutable char value_buf_[16];
 };
-
+// 用于NewConcatenatingIterator的将LevelFileNumIterator转换成tableCache的NewIterator
+// 而tableCache的NewIterator又会调用table的NewTwoLevelIterator
+// table的NewTwoLevelIterator则会继续下去把table的全部record都读出来
 static Iterator* GetFileIterator(void* arg,
                                  const ReadOptions& options,
                                  const Slice& file_value) {
@@ -214,14 +242,19 @@ static Iterator* GetFileIterator(void* arg,
                               DecodeFixed64(file_value.data() + 8));
   }
 }
-
+// NewTwoLevelIterator再次闪亮登场，之前是table，block，record这层的
+// 现在是files，table，block，record这层一路下去，因为，twoLevelIterator，在table->NewIterator中也用到了
+// 抽象的好处运用得淋漓尽致
+// 要是忘记了LevelFileNumIterator的构造可以去查
 Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
                                             int level) const {
   return NewTwoLevelIterator(
       new LevelFileNumIterator(vset_->icmp_, &files_[level]),
       &GetFileIterator, vset_->table_cache_, options);
 }
-
+// 将Version中的所有的sstable的iterator push到iters中
+// 对于level-0因为可能会有overlap，所以单独对每一个file创建一个iter来加入
+// 对于level-n(n > 0)则使用上面提到的NewConcatenatingIterator来遍历某一level的iterator
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
   // Merge all level zero files together since they may overlap
@@ -242,6 +275,10 @@ void Version::AddIterators(const ReadOptions& options,
 }
 
 // Callback from TableCache::Get()
+// 这是用在TableCache::Get()的方法
+// 当TableCache::Get()找到ikey/value的时候就会调用
+// 其中SaveValue的arg是Saver*而当找到了ikey和value时候
+// 就会更新对应Saver*的状态和值
 namespace {
 enum SaverState {
   kNotFound,
@@ -270,11 +307,14 @@ static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
     }
   }
 }
-
+// 判断文件a比文件b更新
+// 用来排序的
 static bool NewestFirst(FileMetaData* a, FileMetaData* b) {
   return a->number > b->number;
 }
-
+// 对于每个overlaps了user_key的file，调用func(arg, level, f)，按新到久的顺序
+// 如果其中一个函数返回了false，就停止该过程
+// ps：user_key要是internal_key的一部分(为了调用FindFile函数)
 void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
                                  void* arg,
                                  bool (*func)(void*, int, FileMetaData*)) {
@@ -282,6 +322,7 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
   // Search level-0 in order from newest to oldest.
+  // 从level-0开始找
   std::vector<FileMetaData*> tmp;
   tmp.reserve(files_[0].size());
   for (uint32_t i = 0; i < files_[0].size(); i++) {
@@ -301,6 +342,7 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
   }
 
   // Search other levels.
+  // level-n(n>0)找，方法和下面的Version::Get用得方法差不多
   for (int level = 1; level < config::kNumLevels; level++) {
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
@@ -319,13 +361,19 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key,
     }
   }
 }
-
+// GetStats的数据结构
+// struct GetStats {
+//   FileMetaData* seek_file;
+//   int seek_file_level;
+// };
+// 这里用到了LookupKey来查找
 Status Version::Get(const ReadOptions& options,
                     const LookupKey& k,
                     std::string* value,
                     GetStats* stats) {
   Slice ikey = k.internal_key();
   Slice user_key = k.user_key();
+  // vset_是versionSet
   const Comparator* ucmp = vset_->icmp_.user_comparator();
   Status s;
 
@@ -337,17 +385,22 @@ Status Version::Get(const ReadOptions& options,
   // We can search level-by-level since entries never hop across
   // levels.  Therefore we are guaranteed that if we find data
   // in an smaller level, later levels are irrelevant.
+  // 从level-0往level-n一直查
   std::vector<FileMetaData*> tmp;
   FileMetaData* tmp2;
   for (int level = 0; level < config::kNumLevels; level++) {
+    // 该层没文件
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
 
     // Get the list of files to search in this level
+    // 第level层的头指针
     FileMetaData* const* files = &files_[level][0];
+    // 这里都是找出可能存在的file
     if (level == 0) {
       // Level-0 files may overlap each other.  Find all files that
       // overlap user_key and process them in order from newest to oldest.
+      // level-0是有可能overlap的所以要先遍历找出重复的，再来排序找出最新的file
       tmp.reserve(num_files);
       for (uint32_t i = 0; i < num_files; i++) {
         FileMetaData* f = files[i];
@@ -357,23 +410,28 @@ Status Version::Get(const ReadOptions& options,
         }
       }
       if (tmp.empty()) continue;
-
+      // 让fileNumber从大到小排
       std::sort(tmp.begin(), tmp.end(), NewestFirst);
+      // tmp的首地址赋值到files指针中
       files = &tmp[0];
+      // size改变
       num_files = tmp.size();
     } else {
       // Binary search to find earliest index whose largest key >= ikey.
+      // level-n(n>0)则二分查找，此时的files_[level]有序
       uint32_t index = FindFile(vset_->icmp_, files_[level], ikey);
       if (index >= num_files) {
         files = NULL;
         num_files = 0;
       } else {
         tmp2 = files[index];
+        // 如果user_key比该层的file最小的key都小就不在这层了
         if (ucmp->Compare(user_key, tmp2->smallest.user_key()) < 0) {
           // All of "tmp2" is past any data for user_key
           files = NULL;
           num_files = 0;
         } else {
+          // 否则找到了
           files = &tmp2;
           num_files = 1;
         }
@@ -401,6 +459,10 @@ Status Version::Get(const ReadOptions& options,
       if (!s.ok()) {
         return s;
       }
+      // 当前的file可能不存在这个key(kNotFound),因为这只是可能在范围内，继续找
+      // kFound当然就是找到了，可以返回了
+      // 也有可能kDeleted掉了，因为从最新的找起，所以可以断定是被删除了
+      // kCorrupt也就是出错了(上面的Parsekey错误)
       switch (saver.state) {
         case kNotFound:
           break;      // Keep searching in other files
@@ -418,7 +480,13 @@ Status Version::Get(const ReadOptions& options,
 
   return Status::NotFound(Slice());  // Use an empty error message for speed
 }
-
+// 当Version::Get方法找到了key之后会得到GetStats
+// 接下来要进行file的allowed_seeks--
+// 如果allowed_seeks <= 0了，同时file_to_compact_ == NULL
+// 那么file_to_compact_就要被赋值成要compact的file
+// 还有file_to_compact_level_被设置成对应的level
+// 同时返回true
+// 否则返回false
 bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != NULL) {

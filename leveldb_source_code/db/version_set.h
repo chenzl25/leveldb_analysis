@@ -84,6 +84,7 @@ class Version {
   // Append to *iters a sequence of iterators that will
   // yield the contents of this Version when merged together.
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
+  // 将version中的所有的用来遍历整个version的数据push到iters中
   void AddIterators(const ReadOptions&, std::vector<Iterator*>* iters);
 
   // Lookup the value for key.  If found, store it in *val and
@@ -155,8 +156,9 @@ class Version {
   // false, makes no more calls.
   //
   // REQUIRES: user portion of internal_key == user_key.
-  // 对于每个overlap range的file，调用func(arg, level, f)，按新到久的顺序
+  // 对于每个overlaps了user_key的file，调用func(arg, level, f)，按新到久的顺序
   // 如果其中一个函数返回了false，就停止该过程
+  // ps：user_key要是internal_key的一部分
   void ForEachOverlapping(Slice user_key, Slice internal_key,
                           void* arg,
                           bool (*func)(void*, int, FileMetaData*));

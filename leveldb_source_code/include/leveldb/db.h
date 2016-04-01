@@ -34,6 +34,7 @@ class WriteBatch;
 // A Snapshot is an immutable object and can therefore be safely
 // accessed from multiple threads without any external synchronization.
 // Snapshot最原生的interface
+// 实现在"db/snapshot.h"
 class Snapshot {
  protected:
   virtual ~Snapshot();

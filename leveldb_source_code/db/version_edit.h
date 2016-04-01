@@ -51,27 +51,32 @@ class VersionEdit {
   ~VersionEdit() { }
 
   void Clear();
-
+  // 设置comparator的名字
   void SetComparatorName(const Slice& name) {
     has_comparator_ = true;
     comparator_ = name.ToString();
   }
+  // 设置logNumber
   void SetLogNumber(uint64_t num) {
     has_log_number_ = true;
     log_number_ = num;
   }
+  // 设置prevLogNumber
   void SetPrevLogNumber(uint64_t num) {
     has_prev_log_number_ = true;
     prev_log_number_ = num;
   }
+  // 设置NextFile
   void SetNextFile(uint64_t num) {
     has_next_file_number_ = true;
     next_file_number_ = num;
   }
+  // 设置LastSequence
   void SetLastSequence(SequenceNumber seq) {
     has_last_sequence_ = true;
     last_sequence_ = seq;
   }
+  // 设置CompactPointer，也就是push到compact_pointers_中
   void SetCompactPointer(int level, const InternalKey& key) {
     compact_pointers_.push_back(std::make_pair(level, key));
   }
@@ -79,6 +84,7 @@ class VersionEdit {
   // Add the specified file at the specified number.
   // REQUIRES: This version has not been saved (see VersionSet::SaveTo)
   // REQUIRES: "smallest" and "largest" are smallest and largest keys in file
+  // push一个FileMetaData到new_files_中
   void AddFile(int level, uint64_t file,
                uint64_t file_size,
                const InternalKey& smallest,
@@ -92,13 +98,14 @@ class VersionEdit {
   }
 
   // Delete the specified "file" from the specified "level".
+  // insert要被delete的fileNubmer到deleted_files_中
   void DeleteFile(int level, uint64_t file) {
     deleted_files_.insert(std::make_pair(level, file));
   }
-
+  // 编码解码分别到的dst，src中
   void EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
-
+  // 返回用来debug Version的信息
   std::string DebugString() const;
 
  private:
@@ -109,7 +116,7 @@ class VersionEdit {
   std::string comparator_;
   // log的FileNumber
   uint64_t log_number_;
-  // 辅助log的FileNumber
+  // 辅助log的FileNumber/之前的log的FileNumber
   uint64_t prev_log_number_;
   // 下一个可用的FileNumber
   uint64_t next_file_number_;
@@ -121,7 +128,7 @@ class VersionEdit {
   bool has_prev_log_number_;
   bool has_next_file_number_;
   bool has_last_sequence_;
-  // 要更新的level
+  // 要更新的level，其中pair的first int是level表示在哪一层
   std::vector< std::pair<int, InternalKey> > compact_pointers_;
   // 要删除的sstable文件（compact的input）
   DeletedFileSet deleted_files_;
