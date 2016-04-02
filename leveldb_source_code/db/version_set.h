@@ -108,6 +108,7 @@ class Version {
   // Samples are taken approximately once every config::kReadBytesPeriod
   // bytes.  Returns true if a new compaction may need to be triggered.
   // REQUIRES: lock is held
+  // 用来对key(internal_key)进行RecordReadSample，具体什么意思看version_set.cc
   bool RecordReadSample(Slice key);
 
   // Reference count management (so Versions do not disappear out from
@@ -115,7 +116,8 @@ class Version {
   // Version引用计数的管理
   void Ref();
   void Unref();
-  // 给定一个range，和level，拿到对应的files
+  // 给定一个range，和level，拿到对应的files到input中
+  // 对于level-0会有特殊处理（不同一般理解的overlap）
   void GetOverlappingInputs(
       int level,
       const InternalKey* begin,         // NULL means before all keys
@@ -133,8 +135,9 @@ class Version {
 
   // Return the level at which we should place a new memtable compaction
   // result that covers the range [smallest_user_key,largest_user_key].
-  // 返回我们应该把memtable的compaction产生的结果放到哪个level(？) 
-  // result 覆盖了range [smallest_user_key,largest_user_key]
+  // 返回我们应该把memtable的compaction产生的结果放到哪个level
+  // memtable覆盖了range [smallest_user_key,largest_user_key]
+  // 注意memtable有机会push到更高的level，具体看实现
   int PickLevelForMemTableOutput(const Slice& smallest_user_key,
                                  const Slice& largest_user_key);
   // 返回给定level中file的数目
@@ -184,6 +187,7 @@ class Version {
   // Score < 1 means compaction is not strictly needed.  These fields
   // are initialized by Finalize().
   // 当前最大的compact权重以及对应的level
+  // 如果Score < 1就不需要compaction
   double compaction_score_;
   int compaction_level_;
 

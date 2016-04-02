@@ -500,6 +500,12 @@ bool Version::UpdateStats(const GetStats& stats) {
   return false;
 }
 
+// 对于传进来的internal_key
+// 在本Version中用ForEachOverlapping来对其有overlap的file进行记录，
+// 如果在这里的方法找到第一个file会记录下来
+// 如果找到了第二个file就停止(或者根本找不到第二个file)
+// 最后如果找到了2个file就会对第一个曾经记录下来的file进行UpdateStats()
+// allowed_seeks就会改变
 bool Version::RecordReadSample(Slice internal_key) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(internal_key, &ikey)) {
@@ -531,18 +537,22 @@ bool Version::RecordReadSample(Slice internal_key) {
   // files. But what if we have a single file that contains many
   // overwrites and deletions?  Should we have another mechanism for
   // finding such files?
+  // 这里作者发起了一个疑问
+  // 就是如果一个file中出现了多个重复的key怎么办，如果是这样的话理应也要进行merge来减少
+  // 但是现在的机制提供的是必须找到第二个file才会进行UpdateStats
   if (state.matches >= 2) {
     // 1MB cost is about 1 seek (see comment in Builder::Apply).
     return UpdateStats(state.stats);
   }
   return false;
 }
-
+// 对Version进行引用增
 void Version::Ref() {
   ++refs_;
 }
-
+// 对Version进行引用减，如果refs == 0 就删除该Version
 void Version::Unref() {
+  // &vset_->dummy_versions_是VersionSet的链表
   assert(this != &vset_->dummy_versions_);
   assert(refs_ >= 1);
   --refs_;
@@ -550,14 +560,21 @@ void Version::Unref() {
     delete this;
   }
 }
-
+// 在Version中给定的level和range判断是否有overlap
+// 内部调用了SomeFileOverlapsRange
+// 说实话这里函数的名字就很清晰了
 bool Version::OverlapInLevel(int level,
                              const Slice* smallest_user_key,
                              const Slice* largest_user_key) {
   return SomeFileOverlapsRange(vset_->icmp_, (level > 0), files_[level],
                                smallest_user_key, largest_user_key);
 }
-
+// 回我们应该把memtable的compaction产生的结果放到哪个level
+// 如果给定的range和level-0有overlap就返回0
+// 如果和level-0没有overlap就可以有机会推到更高的level
+// 但是必须满足两个条件
+// 1.和parent-level没有overlap
+// 2.和grandparent-level的overlap不能过大（否则在parent-level做compact就会merge得很慢）
 int Version::PickLevelForMemTableOutput(
     const Slice& smallest_user_key,
     const Slice& largest_user_key) {
@@ -587,6 +604,9 @@ int Version::PickLevelForMemTableOutput(
 }
 
 // Store in "*inputs" all files in "level" that overlap [begin,end]
+// 给定一个range，和level，拿到对应的files到input中
+// begin和end可以使NULL，分别对应着无穷小和无穷大
+// 对于level-0会有特殊处理（不同一般理解的overlap）
 void Version::GetOverlappingInputs(
     int level,
     const InternalKey* begin,
@@ -613,6 +633,11 @@ void Version::GetOverlappingInputs(
       // "f" is completely after specified range; skip it
     } else {
       inputs->push_back(f);
+      // 对于level-0会特殊处理
+      // 如果level-0中的file的start < user_begin会把user_begin赋值为file_start
+      // 如果level-0中的file的limit > user_end会把user_end赋值为file_limit
+      // 并重新开始（因为level-0的file是乱序的）
+      // 所以level-0的overlap会像是链式反应一样传播出去
       if (level == 0) {
         // Level-0 files may overlap each other.  So check if the newly
         // added file has expanded the range.  If so, restart search.
@@ -629,7 +654,7 @@ void Version::GetOverlappingInputs(
     }
   }
 }
-
+// 打印出当前Version的file的信息，用来debug
 std::string Version::DebugString() const {
   std::string r;
   for (int level = 0; level < config::kNumLevels; level++) {
@@ -687,13 +712,16 @@ class VersionSet::Builder {
   };
   // 要更新的VersionSet
   VersionSet* vset_;
-  // 基准的Version，compact后，将current_传入作为base
+  // 基准的Version，compact后，将VersionSet的current_传入作为base
   Version* base_;
   // 各个level上要更新的文件集合
   LevelState levels_[config::kNumLevels];
 
  public:
   // Initialize a builder with the files from *base and other info from *vset
+  // 构造函数
+  // 新建一个VersionSet::Builder，主要是对要更新的levels_进行初始化，
+  // 还有Version base_的引用增
   Builder(VersionSet* vset, Version* base)
       : vset_(vset),
         base_(base) {
@@ -704,7 +732,9 @@ class VersionSet::Builder {
       levels_[level].added_files = new FileSet(cmp);
     }
   }
-
+  // 析构函数
+  // 都是对需要更新的levels_的所有file进行引用减，如果到了0就delete
+  // 还有就是Version base_的引用减
   ~Builder() {
     for (int level = 0; level < config::kNumLevels; level++) {
       const FileSet* added = levels_[level].added_files;
@@ -727,8 +757,10 @@ class VersionSet::Builder {
   }
 
   // Apply all of the edits in *edit to the current state.
+  // 将edit的所有操作一次性地作用到base_中
   void Apply(VersionEdit* edit) {
     // Update compaction pointers
+    // 把VersionEdit的compact_pointers_设置到VersionSet中以供compact
     for (size_t i = 0; i < edit->compact_pointers_.size(); i++) {
       const int level = edit->compact_pointers_[i].first;
       vset_->compact_pointer_[level] =
@@ -736,6 +768,7 @@ class VersionSet::Builder {
     }
 
     // Delete files
+    // 把VersionEdit的delete file放到要更新的level_的对应位置
     const VersionEdit::DeletedFileSet& del = edit->deleted_files_;
     for (VersionEdit::DeletedFileSet::const_iterator iter = del.begin();
          iter != del.end();
@@ -746,8 +779,11 @@ class VersionSet::Builder {
     }
 
     // Add new files
+    // 把VersionEdit的new file放到要更新的level_的对应位置
     for (size_t i = 0; i < edit->new_files_.size(); i++) {
       const int level = edit->new_files_[i].first;
+      // 将edit->new_files_中的FileMetaData拷贝构造到新的f中
+      // 同时对f引用增
       FileMetaData* f = new FileMetaData(edit->new_files_[i].second);
       f->refs = 1;
 
@@ -764,15 +800,17 @@ class VersionSet::Builder {
       // same as the compaction of 40KB of data.  We are a little
       // conservative and allow approximately one seek for every 16KB
       // of data before triggering a compaction.
+      // 这就是那岩翻译过来的allowed_seeks根据吧，还以为是他自己想出来的。。。。
       f->allowed_seeks = (f->file_size / 16384);
       if (f->allowed_seeks < 100) f->allowed_seeks = 100;
-
+      // 这里如果新增的file在deleted_filesh就会把deleted_files中的file去掉来报纸一致性
       levels_[level].deleted_files.erase(f->number);
       levels_[level].added_files->insert(f);
     }
   }
 
   // Save the current state in *v.
+  // 把当前的Version存储到v中
   void SaveTo(Version* v) {
     BySmallestKey cmp;
     cmp.internal_comparator = &vset_->icmp_;
