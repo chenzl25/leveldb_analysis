@@ -23,6 +23,8 @@ class Reader {
  public:
   // Interface for reporting errors.
   // 一个用来报告错误的类
+  // 还未完全实现是个虚基类，所以要用的时候要先继承这个Reporter，写出Corruption的方法
+  // 再传递进Reader中的构造函数中使用
   class Reporter {
    public:
     virtual ~Reporter();

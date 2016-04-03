@@ -222,6 +222,9 @@ class VersionSet {
   // REQUIRES: *mu is held on entry.
   // REQUIRES: no other thread concurrently calls LogAndApply()
   // 把*edit应用到VersionSet中
+  // 同时把过程记录到descriptor(manifest）文件中
+  // 同时会弄出一个新的current Version
+  // ps：这个方法的调用前要先lock住mu
   Status LogAndApply(VersionEdit* edit, port::Mutex* mu)
       EXCLUSIVE_LOCKS_REQUIRED(mu);
 
@@ -294,7 +297,7 @@ class VersionSet {
   // the specified level.  Returns NULL if there is nothing in that
   // level that overlaps the specified range.  Caller should delete
   // the result.
-  // 返回一个Compaction用来compact 给定level的range
+  // 手工设定要compact的level和range
   // 如果没有这样的range在这level中就返回NULL
   Compaction* CompactRange(
       int level,
@@ -303,6 +306,9 @@ class VersionSet {
 
   // Return the maximum overlapping data (in bytes) at next level for any
   // file at a level >= 1.
+  // 对于所有的level-1到level-(max-1)
+  // 计算每一个file与next level的overlap，并比较大小
+  // 返回overlap的最大值
   int64_t MaxNextLevelOverlappingBytes();
 
   // Create an iterator that reads over the compaction inputs for "*c".
@@ -319,7 +325,7 @@ class VersionSet {
 
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
-  // 把还有iterator引用到的version放到live集合里
+  // 把还有iterator引用到的version的files放到live集合里
   void AddLiveFiles(std::set<uint64_t>* live);
 
   // Return the approximate offset in the database of the data for
@@ -342,15 +348,17 @@ class VersionSet {
 
   friend class Compaction;
   friend class Version;
-
+  // 复用之前的manifest
   bool ReuseManifest(const std::string& dscname, const std::string& dscbase);
-
+  // 内部用来确定哪层level最需要compact的
   void Finalize(Version* v);
-
+  // 把inputs中最小的key，最大的key分别记录到smallest，largest中
+  // inputs不能为空
   void GetRange(const std::vector<FileMetaData*>& inputs,
                 InternalKey* smallest,
                 InternalKey* largest);
-
+  // 对于给定的两组input，计算包含它们的最小range
+  // inputs不能为空
   void GetRange2(const std::vector<FileMetaData*>& inputs1,
                  const std::vector<FileMetaData*>& inputs2,
                  InternalKey* smallest,
@@ -359,8 +367,9 @@ class VersionSet {
   void SetupOtherInputs(Compaction* c);
 
   // Save current contents to *log
+  // 把current的信息通过log::Writer* log记录起来(一般是记录到manifest中)
   Status WriteSnapshot(log::Writer* log);
-
+  // 链表插入Version
   void AppendVersion(Version* v);
   // 实际的Env
   Env* const env_;
@@ -440,6 +449,7 @@ class Compaction {
   // moving a single input file to the next level (no merging or splitting)
   // 判断这是否是一个trivial的compaction
   // 即不用merge，就直接把level-n的file放到level-n+1
+  // 如果trivial同时要满足compact-level和grandparent-level的overlap不能超过阈值
   bool IsTrivialMove() const;
 
   // Add all inputs to this compaction as delete operations to *edit.
@@ -449,12 +459,17 @@ class Compaction {
   // Returns true if the information we have available guarantees that
   // the compaction is producing data in "level+1" for which no data exists
   // in levels greater than "level+1".
-  // 
+  // caller在确保了我们的compact是produce在“level_+1”层的情况下
+  // 判断“level_+1”是否是user_key的BaseLevel
+  // 也就是对所用从“level_+2”开始的level，没有file的range涵盖了user_key
+  // ps：涵盖不代表user_key就在真实在file里。涵盖只是在范围里
   bool IsBaseLevelForKey(const Slice& user_key);
 
   // Returns true iff we should stop building the current output
   // before processing "internal_key".
   // 返回true，当且仅当我们在处理internal_key前应该停止产生output
+  // 这个函数可能会被调用多次，用来统计和grandparents_file的overlap程度
+  // 但有internal_key来限定
   bool ShouldStopBefore(const Slice& internal_key);
 
   // Release the input version for the compaction, once the compaction

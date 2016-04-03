@@ -186,7 +186,7 @@ struct Options {
   // when a database is opened.  This can significantly speed up open.
   //
   // Default: currently false, but may become true later.
-  // 实验功能
+  // 实验功能，如果为true就append到已经存在的manifest和log中
   bool reuse_logs;
 
   // If non-NULL, use the specified filter policy to reduce disk reads.
