@@ -187,6 +187,7 @@ struct Options {
   //
   // Default: currently false, but may become true later.
   // 实验功能，如果为true就append到已经存在的manifest和log中
+  // 如果没有的话没打开一次就会将manifest和log一起合并在一起创造一个最新Version的manifest
   bool reuse_logs;
 
   // If non-NULL, use the specified filter policy to reduce disk reads.

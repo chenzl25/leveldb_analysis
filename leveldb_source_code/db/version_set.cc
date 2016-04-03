@@ -911,7 +911,7 @@ VersionSet::VersionSet(const std::string& dbname,
       descriptor_log_(NULL),
       dummy_versions_(this),
       current_(NULL) {
-  // 顺带创建一个Version
+  // 顺带创建一个Version,current
   AppendVersion(new Version(this));
 }
 // 析构函数
@@ -979,7 +979,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   if (descriptor_log_ == NULL) {
     // No reason to unlock *mu here since we only hit this path in the
     // first call to LogAndApply (when opening the database).
-    // 这个方法只会在第一次用LogAndApply时(打开database的时候。待修正这说法）调用一次
+    // 这个方法只会在第一次用LogAndApply时(打开database的时候）,
+    // 但也可能会复用了descriptor_log_就不在WriteSnapshot
     // 所以没必要那么快进行mu->Unlock()
     // PS：这个方法的运行需要lock了mu先
     assert(descriptor_file_ == NULL);
@@ -991,7 +992,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     if (s.ok()) {
       // 新建一个descriptor_log_(把record记录到descriptior的一个Writer)
       descriptor_log_ = new log::Writer(descriptor_file_);
-      // 把snapshot记录下来
+      // 把snapshot记录下来,snapshot是根据current的Version来记录的
+      // 不包括edit
       s = WriteSnapshot(descriptor_log_);
     }
   }
@@ -1003,6 +1005,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
     // Write new record to MANIFEST log
     // 把应用的edit log到descriptor中
+    // 这里的descriptor可以使复用的也可以是，上面新建的
     if (s.ok()) {
       std::string record;
       edit->EncodeTo(&record);
@@ -1185,7 +1188,7 @@ Status VersionSet::Recover(bool *save_manifest) {
 bool VersionSet::ReuseManifest(const std::string& dscname,
                                const std::string& dscbase) {
   // 实验功能，如果为true就append到已经存在的manifest和log中
-  // 加速功效
+  // 加速功效，加速database的打开，因为每次打开多会重新写一遍manifest以更新到最新的状态
   if (!options_->reuse_logs) {
     return false;
   }

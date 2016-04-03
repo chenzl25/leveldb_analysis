@@ -213,27 +213,34 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
     *s = Status::OK();
   }
 }
-
+// 删除废弃了的文件
 void DBImpl::DeleteObsoleteFiles() {
   if (!bg_error_.ok()) {
     // After a background error, we don't know whether a new version may
     // or may not have been committed, so we cannot safely garbage collect.
+    // 如果bg_error发生了，就不知道一个新的version是否commit了
+    // 所以就停止garbage college
     return;
   }
 
   // Make a set of all of the live files
+  // 先把受保护的文件pending_outputs_先保存起来
   std::set<uint64_t> live = pending_outputs_;
+  // 将当前Version的"live"文件加入到live中
   versions_->AddLiveFiles(&live);
 
   std::vector<std::string> filenames;
+  // 获取dbname目录下的所有files
   env_->GetChildren(dbname_, &filenames); // Ignoring errors on purpose
   uint64_t number;
   FileType type;
   for (size_t i = 0; i < filenames.size(); i++) {
+    // 根据类型判断是否要保留
     if (ParseFileName(filenames[i], &number, &type)) {
       bool keep = true;
       switch (type) {
         case kLogFile:
+          // Log-file要看number和PrevLogNumber
           keep = ((number >= versions_->LogNumber()) ||
                   (number == versions_->PrevLogNumber()));
           break;
@@ -248,6 +255,7 @@ void DBImpl::DeleteObsoleteFiles() {
         case kTempFile:
           // Any temp files that are currently being written to must
           // be recorded in pending_outputs_, which is inserted into "live"
+          // kTempFile是在pending_outputs_中的
           keep = (live.find(number) != live.end());
           break;
         case kCurrentFile:
@@ -258,31 +266,36 @@ void DBImpl::DeleteObsoleteFiles() {
       }
 
       if (!keep) {
+        // 如果ktable要删除，那么table-cache中的缓存要删除
         if (type == kTableFile) {
           table_cache_->Evict(number);
         }
         Log(options_.info_log, "Delete type=%d #%lld\n",
             int(type),
             static_cast<unsigned long long>(number));
+        // 删除文件
         env_->DeleteFile(dbname_ + "/" + filenames[i]);
       }
     }
   }
 }
-
+// 从在disk中储存的descriptor file中恢复Version。结果存到VersionEdit中
 Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
+  // Recover的时候要持有Mutex
   mutex_.AssertHeld();
 
   // Ignore error from CreateDir since the creation of the DB is
   // committed only when the descriptor is created, and this directory
   // may already exist from a previous failed creation attempt.
+  // 创建新目录，忽视出错，原因看上面
   env_->CreateDir(dbname_);
   assert(db_lock_ == NULL);
+  // 现在要对LOCK文件进行flock来
   Status s = env_->LockFile(LockFileName(dbname_), &db_lock_);
   if (!s.ok()) {
     return s;
   }
-
+  // 根据options的一些设置的处理
   if (!env_->FileExists(CurrentFileName(dbname_))) {
     if (options_.create_if_missing) {
       s = NewDB();
@@ -299,7 +312,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
           dbname_, "exists (error_if_exists is true)");
     }
   }
-
+  // 调用VersionSet的Recover
   s = versions_->Recover(save_manifest);
   if (!s.ok()) {
     return s;
@@ -321,10 +334,13 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
     return s;
   }
   std::set<uint64_t> expected;
+  // 现在VersionSet中找到所有应该存在的file
   versions_->AddLiveFiles(&expected);
   uint64_t number;
   FileType type;
   std::vector<uint64_t> logs;
+  // 如果disk中存在expect中的file就把expect中的file去掉
+  // 然后，如果遇到log-file就push到logs中，其中会根据>=VersionSet的LogNumber和==PrevLogNumber的条件来判断
   for (size_t i = 0; i < filenames.size(); i++) {
     if (ParseFileName(filenames[i], &number, &type)) {
       expected.erase(number);
@@ -332,6 +348,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
         logs.push_back(number);
     }
   }
+  // 如果expected的文件再上面没有被删除完整，就意味着缺失
   if (!expected.empty()) {
     char buf[50];
     snprintf(buf, sizeof(buf), "%d missing files; e.g.",
@@ -340,6 +357,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
   }
 
   // Recover in the order in which the logs were generated
+  // 如果存在多个log-file，就将其从旧到新的顺序一路recover
   std::sort(logs.begin(), logs.end());
   for (size_t i = 0; i < logs.size(); i++) {
     s = RecoverLogFile(logs[i], (i == logs.size() - 1), save_manifest, edit,
@@ -351,6 +369,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
     // The previous incarnation may not have written any MANIFEST
     // records after allocating this log number.  So we manually
     // update the file number allocation counter in VersionSet.
+    // 手动更新fileNumber，理由看英文
     versions_->MarkFileNumberUsed(logs[i]);
   }
 
@@ -360,10 +379,11 @@ Status DBImpl::Recover(VersionEdit* edit, bool *save_manifest) {
 
   return Status::OK();
 }
-
+//从log-file中恢复数据 
 Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
                               bool* save_manifest, VersionEdit* edit,
                               SequenceNumber* max_sequence) {
+  // 老伎俩先构建一个LogReporter，用于处理LogReader错误的
   struct LogReporter : public log::Reader::Reporter {
     Env* env;
     Logger* info_log;
@@ -380,6 +400,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   mutex_.AssertHeld();
 
   // Open the log file
+  // 用SequentialFile打开log-file文件
   std::string fname = LogFileName(dbname_, log_number);
   SequentialFile* file;
   Status status = env_->NewSequentialFile(fname, &file);
@@ -389,6 +410,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   }
 
   // Create the log reader.
+  // 创建一个log-reader
   LogReporter reporter;
   reporter.env = env_;
   reporter.info_log = options_.info_log;
@@ -398,12 +420,14 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   // paranoid_checks==false so that corruptions cause entire commits
   // to be skipped instead of propagating bad information (like overly
   // large sequence numbers).
+  // 内部会主动检查checksum，原因看英文
   log::Reader reader(file, &reporter, true/*checksum*/,
                      0/*initial_offset*/);
   Log(options_.info_log, "Recovering log #%llu",
       (unsigned long long) log_number);
 
   // Read all the records and add to a memtable
+  // 在log中读取每一条record，作用到mmtable中，如果memtable上线到达了，就compact
   std::string scratch;
   Slice record;
   WriteBatch batch;
@@ -416,27 +440,31 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
           record.size(), Status::Corruption("log record too small"));
       continue;
     }
+    // 把读到的内容记录到WriteBatch中
     WriteBatchInternal::SetContents(&batch, record);
 
     if (mem == NULL) {
       mem = new MemTable(internal_comparator_);
       mem->Ref();
     }
+    // 把WriteBatch写到到memtable中
     status = WriteBatchInternal::InsertInto(&batch, mem);
     MaybeIgnoreError(&status);
     if (!status.ok()) {
       break;
     }
+    // 更新max_sequence，最终max_sequence会赋值回VersionSet的LastSequence中
     const SequenceNumber last_seq =
         WriteBatchInternal::Sequence(&batch) +
         WriteBatchInternal::Count(&batch) - 1;
     if (last_seq > *max_sequence) {
       *max_sequence = last_seq;
     }
-
+    // 如果memtable的大小超过阈值就进行compact
     if (mem->ApproximateMemoryUsage() > options_.write_buffer_size) {
       compactions++;
       *save_manifest = true;
+      // 把mem写到level-0中
       status = WriteLevel0Table(mem, edit, NULL);
       mem->Unref();
       mem = NULL;
@@ -451,16 +479,19 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   delete file;
 
   // See if we should keep reusing the last log file.
+  // 看下是否我是否要reuse最后一个log-file
   if (status.ok() && options_.reuse_logs && last_log && compactions == 0) {
     assert(logfile_ == NULL);
     assert(log_ == NULL);
     assert(mem_ == NULL);
     uint64_t lfile_size;
+    // reuse就是在最后一个log-file和面追加
     if (env_->GetFileSize(fname, &lfile_size).ok() &&
         env_->NewAppendableFile(fname, &logfile_).ok()) {
       Log(options_.info_log, "Reusing old log %s \n", fname.c_str());
       log_ = new log::Writer(logfile_, lfile_size);
       logfile_number_ = log_number;
+      // 同时会把mem_table复用过来
       if (mem != NULL) {
         mem_ = mem;
         mem = NULL;
@@ -471,7 +502,8 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
       }
     }
   }
-
+  // 如果mem != NULL则表明上面的resue log-file没成功
+  // 所以要对剩下的mem进行compact
   if (mem != NULL) {
     // mem did not get reused; compact it.
     if (status.ok()) {
@@ -480,24 +512,37 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
     }
     mem->Unref();
   }
-
+  // 从上面的过程我们就可以看到recover的过程就是先找到CURRENT找到对应的manifest
+  // 再更具manifest的一系列的VersionEdit来更新到上一次退出的Version状态，
+  // 最后就会再根据log-file来进行可能丢失的操作，最后还会判断是否对log-file进行复用
+  // ------------------这段以后补充-------------
+  // 现在我只是看到过一个log-file的情况，所以就一个log-file的情况的话，可以把log恢复中用到的
+  // memtable转化成正常使用的memtable，这样就不用多一次整合了
+  // -----------------------------------------
   return status;
 }
-
+// 将memtable写到level-0中，因为这个操作会影响version
+// 所以记录到了edit中
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
   mutex_.AssertHeld();
+  // 开始记录时间
   const uint64_t start_micros = env_->NowMicros();
+  // 新建一个metaFile
   FileMetaData meta;
   meta.number = versions_->NewFileNumber();
+  // 加入被保护的文件集合中
   pending_outputs_.insert(meta.number);
+  // 获取memtable的iter用来构建table
   Iterator* iter = mem->NewIterator();
   Log(options_.info_log, "Level-0 table #%llu: started",
       (unsigned long long) meta.number);
 
   Status s;
   {
+    // 这里要解锁应该是由于table_cache_自带同步机制的原因
     mutex_.Unlock();
+    // 根据memtable的iter来构建table
     s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta);
     mutex_.Lock();
   }
@@ -507,6 +552,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
       (unsigned long long) meta.file_size,
       s.ToString().c_str());
   delete iter;
+  // 从保护文件集合中删除
   pending_outputs_.erase(meta.number);
 
 
@@ -516,9 +562,11 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   if (s.ok() && meta.file_size > 0) {
     const Slice min_user_key = meta.smallest.user_key();
     const Slice max_user_key = meta.largest.user_key();
+    // 如果base不为空就会选择一个最合适的level来output，否则就是level-0
     if (base != NULL) {
       level = base->PickLevelForMemTableOutput(min_user_key, max_user_key);
     }
+    // edit中加入file
     edit->AddFile(level, meta.number, meta.file_size,
                   meta.smallest, meta.largest);
   }
@@ -526,6 +574,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = meta.file_size;
+  // 把stats记录到stats_中，stats_记录着所有compact的信息
   stats_[level].Add(stats);
   return s;
 }
@@ -640,13 +689,15 @@ void DBImpl::RecordBackgroundError(const Status& s) {
     bg_cv_.SignalAll();
   }
 }
-
+// 尝试进行compact
 void DBImpl::MaybeScheduleCompaction() {
   mutex_.AssertHeld();
   if (bg_compaction_scheduled_) {
     // Already scheduled
+    // 已近在调度compact中了
   } else if (shutting_down_.Acquire_Load()) {
     // DB is being deleted; no more background compactions
+    // 如果shutting_down_.Acquire_Load()成功就是DB正在被delete
   } else if (!bg_error_.ok()) {
     // Already got an error; no more changes
   } else if (imm_ == NULL &&
@@ -654,23 +705,27 @@ void DBImpl::MaybeScheduleCompaction() {
              !versions_->NeedsCompaction()) {
     // No work to be done
   } else {
+    // 开始调度compact
     bg_compaction_scheduled_ = true;
     env_->Schedule(&DBImpl::BGWork, this);
   }
 }
-
+// 后台调度的包装
 void DBImpl::BGWork(void* db) {
   reinterpret_cast<DBImpl*>(db)->BackgroundCall();
 }
 
 void DBImpl::BackgroundCall() {
+  // 先上锁，MutexLock的构造函数就是上锁
   MutexLock l(&mutex_);
   assert(bg_compaction_scheduled_);
   if (shutting_down_.Acquire_Load()) {
     // No more background work when shutting down.
+    // DB正在被delete，所以不再工作
   } else if (!bg_error_.ok()) {
     // No more background work after a background error.
   } else {
+    // 真正的后台compact
     BackgroundCompaction();
   }
 
@@ -678,13 +733,14 @@ void DBImpl::BackgroundCall() {
 
   // Previous compaction may have produced too many files in a level,
   // so reschedule another compaction if needed.
+  // 可能之前的compact产生了很多的files，需要多次地compact才能完成
   MaybeScheduleCompaction();
   bg_cv_.SignalAll();
 }
 
 void DBImpl::BackgroundCompaction() {
   mutex_.AssertHeld();
-
+  // 如果immutable非空就直接CompactMemTable就可以返回额
   if (imm_ != NULL) {
     CompactMemTable();
     return;
@@ -1485,19 +1541,23 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
 }
 
 DB::~DB() { }
-
+// DB::open的定义
 Status DB::Open(const Options& options, const std::string& dbname,
                 DB** dbptr) {
   *dbptr = NULL;
-
+  // 先新建一个DBImpl
   DBImpl* impl = new DBImpl(options, dbname);
+  // 上锁
   impl->mutex_.Lock();
+  // 这个edit主要是记录log-file的重演的
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
   bool save_manifest = false;
   Status s = impl->Recover(&edit, &save_manifest);
+  // 如果impl->mem_ == NULL则说明recover中没有resuse log-file
   if (s.ok() && impl->mem_ == NULL) {
     // Create new log and a corresponding memtable.
+    // 创建log-file和memtable
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;
     s = options.env->NewWritableFile(LogFileName(dbname, new_log_number),
@@ -1511,18 +1571,33 @@ Status DB::Open(const Options& options, const std::string& dbname,
       impl->mem_->Ref();
     }
   }
+  // save_manifest如果为false的话，就是reuse manifest，
+  // 这样就可以不适用LogAndApply了，当然就算reuse了manifest，
+  // 如果recover的中途log-file的重演过程中触发了compact也会有save_manifest = true
+  // 这是就需要调用LogAndApply了。而我们所说的可以加速database的open是因为
+  // 在versions_->recover中复用了manifest，
+  // 而LogAndApply遇到已经有manifest的logWriter了，就会跳过那个全体db记录的Snapshot的write
   if (s.ok() && save_manifest) {
+    // recover后不再需要old-log-file
     edit.SetPrevLogNumber(0);  // No older logs needed after recovery.
+    // 设置当前的logfile_number_
     edit.SetLogNumber(impl->logfile_number_);
+    // 调用LogAndApply写到manifest和应用到version中
     s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
   }
+  // logfile_如果没用reuse的话，上面的LogAndApply就已经把状态更新到最新的了
+  // 如果reuse的话就会有logfile剩下来，Version就会没更新到最新的状态，还有一部分是在logfile中
   if (s.ok()) {
+    // 上面的一切结束后就已经把最新的manifest写好了
+    // DeleteObsoleteFiles就是删除没用的文件
     impl->DeleteObsoleteFiles();
     impl->MaybeScheduleCompaction();
   }
+  // 解锁
   impl->mutex_.Unlock();
   if (s.ok()) {
     assert(impl->mem_ != NULL);
+    // 返回打开后的db
     *dbptr = impl;
   } else {
     delete impl;

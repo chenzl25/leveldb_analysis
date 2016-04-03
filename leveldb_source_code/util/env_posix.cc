@@ -291,9 +291,11 @@ class PosixFileLock : public FileLock {
 };
 
 // Set of locked files.  We keep a separate set instead of just
-// relying on fcntrl(F_SETLK) since fcntl(F_SETLK) does not provide
+// relying on fcntl(F_SETLK) since fcntl(F_SETLK) does not provide
 // any protection against multiple uses from the same process.
 // 用于管理lockfile的table，详情看上面英文介绍
+// 因为在同一个process中fctl可以被连续调用多次，所以需要自己同这样一个LockTalbe来实现
+// 同一个process的lock-file
 class PosixLockTable {
  private:
   port::Mutex mu_;
