@@ -295,7 +295,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k,
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
     } else {
-      // 毅力要用到blockReader来读取相应的block
+      // 要用到blockReader来读取相应的block
       // 其中如果有block_cache的话会进行缓存
       Iterator* block_iter = BlockReader(this, options, iiter->value());
       block_iter->Seek(k);

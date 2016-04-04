@@ -95,26 +95,32 @@ class DBImpl : public DB {
   void MaybeIgnoreError(Status* s) const;
 
   // Delete any unneeded files and stale in-memory entries.
+  // 删除不再需要的file，并且清理相应的缓存(如果有的话)
   void DeleteObsoleteFiles();
 
   // Compact the in-memory write buffer to disk.  Switches to a new
   // log-file/memtable and writes a new descriptor iff successful.
   // Errors are recorded in bg_error_.
+  // compact memtable到disk中，如果成功了就会更换log-file和追加新的manifest
   void CompactMemTable() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   //从log-file中恢复数据 
   Status RecoverLogFile(uint64_t log_number, bool last_log, bool* save_manifest,
                         VersionEdit* edit, SequenceNumber* max_sequence)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
+  // 将memtable写到level-0中，因为这个操作会影响version
+  // 所以记录到了edit中
   Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
+  // 寻找有足够的空间来WriteBatch，有很多策略判断，情况实现
+  // force表示强行令memtable compact到disk，即使memtable还有空的空间
   Status MakeRoomForWrite(bool force /* compact even if there is room? */)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  // 将要写入的Batch组合起来一次写，提高性能
   WriteBatch* BuildBatchGroup(Writer** last_writer);
-
+  // 记录background有错误
   void RecordBackgroundError(const Status& s);
-
+  // 看是否需要进行compact调度
+  // 后面的一系列函数都跟compact有关
   void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   static void BGWork(void* db);
   void BackgroundCall();
@@ -123,9 +129,11 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status DoCompactionWork(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
+  // 打开compact的output file，并建立tableBuilder
   Status OpenCompactionOutputFile(CompactionState* compact);
+  // 完成compation，并且进行output file
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
+  // 将compact的结果记录到log-file中并应用到VersionSet中
   Status InstallCompactionResults(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -161,7 +169,7 @@ class DBImpl : public DB {
   uint32_t seed_;                // For sampling.
 
   // Queue of writers.
-  // writers的队列
+  // writer的队列
   std::deque<Writer*> writers_;
   WriteBatch* tmp_batch_;
   // snapshots_的链表

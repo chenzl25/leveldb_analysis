@@ -295,6 +295,9 @@ struct Saver {
   std::string* value;
 };
 }
+// 在table中的GET都是用iterator的seek来实现的（seek可以确保snapshot）
+// 所以查找的key不一定准确
+// 所以还差那不比较相等的逻辑在这里
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
   Saver* s = reinterpret_cast<Saver*>(arg);
   ParsedInternalKey parsed_key;
@@ -1000,7 +1003,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
   // Unlock during expensive MANIFEST log write
   {
-    // 可以解锁了
+    // 可以解锁了,可能是进行IO操作
     mu->Unlock();
 
     // Write new record to MANIFEST log
@@ -1037,6 +1040,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     prev_log_number_ = edit->prev_log_number_;
   } else {
     // 如果失败的处理
+    // 如果是刚刚新建了manifest就把manifest删除
+    // 如果不是就不管(当然这里会出现corrputed manifest的情况，要依靠RepairDB来完成)
     delete v;
     if (!new_manifest_file.empty()) {
       delete descriptor_log_;

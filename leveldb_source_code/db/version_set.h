@@ -429,7 +429,7 @@ class Compaction {
 
   // Return the object that holds the edits to the descriptor done
   // by this compaction.
-  // 返回一个根据compaction来生成的VersionEdit，用于descriptor file
+  // 返回一个compaction内部的VersionEdit指针，用于descriptor file
   VersionEdit* edit() { return &edit_; }
 
   // "which" must be either 0 or 1
